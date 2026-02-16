@@ -10,6 +10,7 @@ from .const import DOMAIN
 from .views import (
     CamPassAuthView,
     CamPassPinView,
+    CamPassRedirectView,
     CamPassStatusView,
     CamPassStreamView,
     CamPassViewerView,
@@ -37,6 +38,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     
     # Register HTTP views (only once, they handle all slugs)
     if "_views_registered" not in hass.data[DOMAIN]:
+        hass.http.register_view(CamPassRedirectView())
         hass.http.register_view(CamPassPinView())
         hass.http.register_view(CamPassViewerView())
         hass.http.register_view(CamPassAuthView())

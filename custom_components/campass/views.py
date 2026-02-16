@@ -55,6 +55,18 @@ def verify_jwt_token(token: str, slug: str, secret: str) -> bool:
         return False
 
 
+class CamPassRedirectView(HomeAssistantView):
+    """Redirect /campass/{slug} to /campass/{slug}/."""
+
+    requires_auth = False
+    url = "/campass/{slug}"
+    name = "api:campass:redirect"
+
+    async def get(self, request, slug):
+        """Redirect to trailing slash URL."""
+        raise web.HTTPFound(f"/campass/{slug}/")
+
+
 class CamPassPinView(HomeAssistantView):
     """View for PIN entry page."""
 
