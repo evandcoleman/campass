@@ -162,15 +162,11 @@ class CamPassConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     @callback
     def async_get_options_flow(config_entry):
         """Get the options flow for this handler."""
-        return CamPassOptionsFlow(config_entry)
+        return CamPassOptionsFlow()
 
 
 class CamPassOptionsFlow(config_entries.OptionsFlow):
     """Handle options flow for CamPass."""
-
-    def __init__(self, config_entry: config_entries.ConfigEntry):
-        """Initialize options flow."""
-        self.config_entry = config_entry
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None):
         """Manage the options."""
@@ -237,7 +233,7 @@ class CamPassOptionsFlow(config_entries.OptionsFlow):
                 ),
                 vol.Required(
                     "passcode",
-                    default=self.config_entry.data.get("passcode"),
+                    default=self.config_entry.data.get("passcode", self.config_entry.data.get("pin", "")),
                 ): str,
                 vol.Required(
                     "slug",

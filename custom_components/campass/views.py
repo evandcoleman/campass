@@ -129,7 +129,7 @@ class CamPassAuthView(HomeAssistantView):
         except Exception:
             return web.json_response({"error": "Invalid request"}, status=400)
 
-        if pin == entry.data["passcode"]:
+        if pin == entry.data.get("passcode", entry.data.get("pin", "")):
             # Create JWT token
             secret = request.app["hass"].data[DOMAIN][entry.entry_id]["jwt_secret"]
             token = create_jwt_token(slug, secret)
