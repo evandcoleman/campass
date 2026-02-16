@@ -231,15 +231,32 @@ class CamPassStreamView(HomeAssistantView):
         if camera_id not in entry.data["cameras"]:
             return web.Response(text="Camera not allowed", status=403)
 
-        # Get camera entity
+        # Get camera entity via entity component
+        camera = None
         try:
-            camera = hass.data["camera"].get_entity(camera_id)
-        except (KeyError, AttributeError):
-            camera = None
+            component = hass.data.get("camera")
+            if component and hasattr(component, "get_entity"):
+                camera = component.get_entity(camera_id)
+        except (KeyError, AttributeError) as err:
+            _LOGGER.debug("Could not get camera entity via component: %s", err)
+
+        if not camera:
+            # Try via entity registry + platform
+            try:
+                from homeassistant.helpers.entity_component import EntityComponent
+                for comp in hass.data.values():
+                    if isinstance(comp, EntityComponent):
+                        entity = comp.get_entity(camera_id)
+                        if entity and hasattr(entity, "handle_async_mjpeg_stream"):
+                            camera = entity
+                            break
+            except Exception as err:
+                _LOGGER.debug("Entity component lookup failed: %s", err)
 
         # Try using native MJPEG stream if available
         if camera and hasattr(camera, "handle_async_mjpeg_stream"):
             try:
+                _LOGGER.debug("Using native MJPEG stream for %s", camera_id)
                 return await camera.handle_async_mjpeg_stream(request)
             except Exception as err:
                 _LOGGER.warning(
@@ -247,6 +264,8 @@ class CamPassStreamView(HomeAssistantView):
                     camera_id,
                     err,
                 )
+        else:
+            _LOGGER.debug("Falling back to snapshot polling for %s", camera_id)
 
         # Fallback: snapshot polling at 2fps
         response = web.StreamResponse()
