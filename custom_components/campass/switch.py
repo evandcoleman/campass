@@ -5,6 +5,7 @@ from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.restore_state import RestoreEntity
 
 from .const import DOMAIN
 
@@ -20,7 +21,7 @@ async def async_setup_entry(
     async_add_entities([CamPassSwitch(entry)], True)
 
 
-class CamPassSwitch(SwitchEntity):
+class CamPassSwitch(SwitchEntity, RestoreEntity):
     """Representation of a CamPass share switch."""
 
     def __init__(self, entry: ConfigEntry) -> None:
@@ -29,7 +30,13 @@ class CamPassSwitch(SwitchEntity):
         self._attr_unique_id = f"{DOMAIN}_{entry.data['slug']}"
         self._attr_name = f"CamPass: {entry.data['name']}"
         self.entity_id = f"switch.campass_{entry.data['slug']}"
-        self._is_on = False  # Default to OFF for security
+        self._is_on = False
+
+    async def async_added_to_hass(self) -> None:
+        """Restore last known state on startup."""
+        last_state = await self.async_get_last_state()
+        if last_state is not None:
+            self._is_on = last_state.state == "on"
 
     @property
     def is_on(self) -> bool:
@@ -45,21 +52,11 @@ class CamPassSwitch(SwitchEntity):
         """Turn the switch on."""
         self._is_on = True
         self.async_write_ha_state()
-        _LOGGER.info(
-            "CamPass share '%s' enabled (slug: %s)",
-            self._entry.data["name"],
-            self._entry.data["slug"],
-        )
 
     async def async_turn_off(self, **kwargs) -> None:
         """Turn the switch off."""
         self._is_on = False
         self.async_write_ha_state()
-        _LOGGER.info(
-            "CamPass share '%s' disabled (slug: %s)",
-            self._entry.data["name"],
-            self._entry.data["slug"],
-        )
 
     @property
     def extra_state_attributes(self) -> dict:

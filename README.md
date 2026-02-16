@@ -84,7 +84,7 @@ automation:
 - Passcodes are validated server-side
 - Sessions use signed JWT tokens (httpOnly cookies, 24h expiry)
 - Each share has its own cryptographic secret
-- Sharing defaults to **off** on every HA restart
+- Switch state persists across HA restarts
 - Camera access is restricted to the configured whitelist
 
 ## License
