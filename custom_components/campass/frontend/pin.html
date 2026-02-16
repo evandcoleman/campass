@@ -332,6 +332,18 @@
                 if (v) handleKey(v);
             });
         });
+
+        // Keyboard support for PIN modes
+        if (AUTH_TYPE !== 'alphanumeric') {
+            document.addEventListener('keydown', (e) => {
+                if (e.key >= '0' && e.key <= '9') {
+                    handleKey(e.key);
+                } else if (e.key === 'Backspace') {
+                    e.preventDefault();
+                    handleKey('del');
+                }
+            });
+        }
     </script>
 </body>
 </html>
