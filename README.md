@@ -38,7 +38,7 @@ PIN-protected camera sharing for [Home Assistant](https://www.home-assistant.io/
 ## Setup
 
 1. Go to **Settings → Integrations → Add Integration → CamPass**
-2. Enter a name (e.g. "Emily"), choose auth type, set a passcode
+2. Enter a name (e.g. "Guest"), choose auth type, set a passcode
 3. Select which cameras to share
 4. Turn on the `switch.campass_<name>` entity to enable sharing
 
@@ -49,7 +49,7 @@ Repeat to create additional shares with different settings.
 Share the URL with your guest:
 
 ```
-http://YOUR_HA_ADDRESS:8123/campass/emily/
+http://YOUR_HA_ADDRESS:8123/campass/guest/
 ```
 
 They enter the passcode and see the live camera feed. When you turn off the switch, they see "Camera not available."
@@ -67,7 +67,7 @@ automation:
     action:
       - service: switch.turn_on
         target:
-          entity_id: switch.campass_emily
+          entity_id: switch.campass_guest
 
   - alias: "Disable baby cam sharing in morning"
     trigger:
@@ -76,7 +76,7 @@ automation:
     action:
       - service: switch.turn_off
         target:
-          entity_id: switch.campass_emily
+          entity_id: switch.campass_guest
 ```
 
 ## Security
