@@ -12,6 +12,7 @@ from .views import (
     CamPassPinView,
     CamPassRedirectView,
     CamPassStatusView,
+    CamPassStreamInfoView,
     CamPassStreamView,
     CamPassViewerView,
 )
@@ -43,6 +44,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.http.register_view(CamPassViewerView())
         hass.http.register_view(CamPassAuthView())
         hass.http.register_view(CamPassStatusView())
+        hass.http.register_view(CamPassStreamInfoView())
         hass.http.register_view(CamPassStreamView())
         hass.data[DOMAIN]["_views_registered"] = True
         _LOGGER.info("CamPass HTTP views registered")

@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>{{SHARE_NAME}} - CamPass</title>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
     <style>
         * {
             margin: 0;
@@ -14,8 +15,8 @@
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-            background: #000000;
-            color: #ffffff;
+            background: #000;
+            color: #fff;
             overflow: hidden;
             height: 100vh;
             display: flex;
@@ -32,10 +33,7 @@
             z-index: 100;
         }
 
-        .share-name {
-            font-size: 16px;
-            font-weight: 600;
-        }
+        .share-name { font-size: 16px; font-weight: 600; }
 
         .status {
             display: flex;
@@ -70,13 +68,8 @@
             z-index: 99;
         }
 
-        .camera-selector::-webkit-scrollbar {
-            display: none;
-        }
-
-        .camera-selector.hidden {
-            display: none;
-        }
+        .camera-selector::-webkit-scrollbar { display: none; }
+        .camera-selector.hidden { display: none; }
 
         .camera-tab {
             display: inline-block;
@@ -85,27 +78,21 @@
             background: rgba(255, 255, 255, 0.1);
             border: none;
             border-radius: 20px;
-            color: #ffffff;
+            color: #fff;
             font-size: 14px;
             cursor: pointer;
             transition: all 0.2s ease;
-            white-space: nowrap;
         }
 
-        .camera-tab.active {
-            background: #6c63ff;
-        }
-
-        .camera-tab:active {
-            transform: scale(0.95);
-        }
+        .camera-tab.active { background: #6c63ff; }
+        .camera-tab:active { transform: scale(0.95); }
 
         .viewer-container {
             flex: 1;
             display: flex;
             align-items: center;
             justify-content: center;
-            background: #000000;
+            background: #000;
             position: relative;
             overflow: hidden;
         }
@@ -116,22 +103,9 @@
             object-fit: contain;
         }
 
-        .message {
-            text-align: center;
-            padding: 40px 20px;
-        }
-
-        .message-title {
-            font-size: 20px;
-            font-weight: 600;
-            margin-bottom: 12px;
-        }
-
-        .message-text {
-            font-size: 14px;
-            color: #a0a0c0;
-            margin-bottom: 24px;
-        }
+        .message { text-align: center; padding: 40px 20px; }
+        .message-title { font-size: 20px; font-weight: 600; margin-bottom: 12px; }
+        .message-text { font-size: 14px; color: #a0a0c0; margin-bottom: 24px; }
 
         .retry-button {
             display: inline-block;
@@ -139,22 +113,15 @@
             background: #6c63ff;
             border: none;
             border-radius: 24px;
-            color: #ffffff;
+            color: #fff;
             font-size: 14px;
             font-weight: 600;
             cursor: pointer;
-            transition: all 0.2s ease;
         }
 
-        .retry-button:active {
-            transform: scale(0.95);
-        }
+        .retry-button:active { transform: scale(0.95); }
 
-        .loading {
-            text-align: center;
-            padding: 40px 20px;
-            color: #a0a0c0;
-        }
+        .loading { text-align: center; padding: 40px 20px; color: #a0a0c0; }
 
         .spinner {
             display: inline-block;
@@ -167,9 +134,7 @@
             margin-bottom: 16px;
         }
 
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
+        @keyframes spin { to { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
@@ -191,120 +156,153 @@
     </div>
 
     <script>
-        const slug = window.location.pathname.split('/')[2];
+        const slug = '{{SLUG}}';
         let cameras = [];
         let currentCamera = null;
-        let statusCheckInterval = null;
+        let currentHls = null;
+        let statusInterval = null;
 
         const viewerContainer = document.getElementById('viewerContainer');
         const cameraSelector = document.getElementById('cameraSelector');
 
         async function checkStatus() {
             try {
-                const response = await fetch(`/campass/${slug}/api/status`);
-                
-                if (response.status === 401) {
+                const res = await fetch(`/campass/${slug}/api/status`);
+                if (res.status === 401) {
                     window.location.href = `/campass/${slug}/`;
                     return;
                 }
-
-                const data = await response.json();
+                const data = await res.json();
 
                 if (!data.available) {
-                    showMessage('Camera Not Available', 'Sharing has been disabled by the owner.', true);
+                    destroyStream();
+                    showMessage('Camera Not Available', 'Sharing has been disabled by the owner.', false);
                     return;
                 }
 
                 cameras = data.cameras;
-                
-                if (cameras.length === 0) {
+                if (!cameras.length) {
                     showMessage('No Cameras', 'No cameras are currently available.', false);
                     return;
                 }
 
-                // Set initial camera if not set
-                if (!currentCamera && cameras.length > 0) {
+                if (!currentCamera) {
                     currentCamera = cameras[0].entity_id;
+                    setupCameraTabs();
+                    loadStream(currentCamera);
                 }
-
-                setupUI();
-                showStream();
-
-            } catch (error) {
+            } catch {
                 showMessage('Connection Error', 'Unable to connect to camera feed.', true);
             }
         }
 
-        function setupUI() {
-            // Setup camera selector if multiple cameras
-            if (cameras.length > 1) {
-                cameraSelector.classList.remove('hidden');
-                cameraSelector.innerHTML = '';
-                
-                cameras.forEach(camera => {
-                    const tab = document.createElement('button');
-                    tab.className = 'camera-tab';
-                    tab.textContent = camera.name;
-                    tab.dataset.cameraId = camera.entity_id;
-                    
-                    if (camera.entity_id === currentCamera) {
-                        tab.classList.add('active');
-                    }
-                    
-                    tab.addEventListener('click', () => {
-                        currentCamera = camera.entity_id;
-                        
-                        // Update active state
-                        cameraSelector.querySelectorAll('.camera-tab').forEach(t => {
-                            t.classList.remove('active');
-                        });
-                        tab.classList.add('active');
-                        
-                        showStream();
-                    });
-                    
-                    cameraSelector.appendChild(tab);
-                });
-            } else {
+        function setupCameraTabs() {
+            if (cameras.length <= 1) {
                 cameraSelector.classList.add('hidden');
+                return;
+            }
+            cameraSelector.classList.remove('hidden');
+            cameraSelector.innerHTML = '';
+            cameras.forEach(cam => {
+                const tab = document.createElement('button');
+                tab.className = `camera-tab${cam.entity_id === currentCamera ? ' active' : ''}`;
+                tab.textContent = cam.name;
+                tab.addEventListener('click', () => {
+                    if (cam.entity_id === currentCamera) return;
+                    currentCamera = cam.entity_id;
+                    cameraSelector.querySelectorAll('.camera-tab').forEach(t => t.classList.remove('active'));
+                    tab.classList.add('active');
+                    loadStream(currentCamera);
+                });
+                cameraSelector.appendChild(tab);
+            });
+        }
+
+        async function loadStream(cameraId) {
+            destroyStream();
+            viewerContainer.innerHTML = '<div class="loading"><div class="spinner"></div><div>Loading stream...</div></div>';
+
+            try {
+                // Ask the backend what stream type is available
+                const res = await fetch(`/campass/${slug}/api/stream-info/${cameraId}`);
+                if (!res.ok) throw new Error('Stream info request failed');
+                const info = await res.json();
+
+                if (info.type === 'hls' && info.url) {
+                    loadHlsStream(info.url);
+                } else {
+                    loadMjpegStream(cameraId);
+                }
+            } catch (err) {
+                // Fallback to MJPEG directly
+                loadMjpegStream(cameraId);
             }
         }
 
-        function showStream() {
+        function loadHlsStream(url) {
+            viewerContainer.innerHTML = '<video class="stream" id="hlsVideo" autoplay muted playsinline></video>';
+            const video = document.getElementById('hlsVideo');
+
+            if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                // Safari native HLS
+                video.src = url;
+                video.addEventListener('error', () => {
+                    // Fallback to MJPEG
+                    loadMjpegStream(currentCamera);
+                });
+            } else if (Hls.isSupported()) {
+                currentHls = new Hls({
+                    enableWorker: true,
+                    lowLatencyMode: true,
+                    backBufferLength: 0,
+                });
+                currentHls.loadSource(url);
+                currentHls.attachMedia(video);
+                currentHls.on(Hls.Events.ERROR, (event, data) => {
+                    if (data.fatal) {
+                        destroyStream();
+                        loadMjpegStream(currentCamera);
+                    }
+                });
+            } else {
+                loadMjpegStream(currentCamera);
+            }
+        }
+
+        function loadMjpegStream(cameraId) {
             viewerContainer.innerHTML = `
-                <img class="stream" 
-                     src="/campass/${slug}/api/stream/${currentCamera}" 
+                <img class="stream"
+                     src="/campass/${slug}/api/stream/${cameraId}"
                      alt="Camera Stream"
-                     onerror="handleStreamError()">
+                     onerror="showMessage('Stream Error', 'Unable to load camera stream.', true)">
             `;
         }
 
+        function destroyStream() {
+            if (currentHls) {
+                currentHls.destroy();
+                currentHls = null;
+            }
+        }
+
         function showMessage(title, text, showRetry) {
+            destroyStream();
             viewerContainer.innerHTML = `
                 <div class="message">
                     <div class="message-title">${title}</div>
                     <div class="message-text">${text}</div>
-                    ${showRetry ? '<button class="retry-button" onclick="checkStatus()">Retry</button>' : ''}
+                    ${showRetry ? '<button class="retry-button" onclick="retry()">Retry</button>' : ''}
                 </div>
             `;
         }
 
-        function handleStreamError() {
-            showMessage('Stream Error', 'Unable to load camera stream.', true);
+        function retry() {
+            currentCamera = null;
+            checkStatus();
         }
 
-        // Initial load
         checkStatus();
-
-        // Poll status every 30 seconds
-        statusCheckInterval = setInterval(checkStatus, 30000);
-
-        // Cleanup on page unload
-        window.addEventListener('beforeunload', () => {
-            if (statusCheckInterval) {
-                clearInterval(statusCheckInterval);
-            }
-        });
+        statusInterval = setInterval(checkStatus, 30000);
     </script>
 </body>
 </html>

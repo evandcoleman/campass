@@ -11,6 +11,11 @@ from homeassistant.components.camera import async_get_image
 from homeassistant.components.http import HomeAssistantView
 from homeassistant.core import HomeAssistant
 
+try:
+    from homeassistant.components.camera import async_get_stream
+except ImportError:
+    async_get_stream = None
+
 from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
@@ -201,8 +206,55 @@ class CamPassStatusView(HomeAssistantView):
         })
 
 
+class CamPassStreamInfoView(HomeAssistantView):
+    """Return HLS stream URL for a camera."""
+
+    requires_auth = False
+    url = "/campass/{slug}/api/stream-info/{camera_id:.+}"
+    name = "api:campass:stream_info"
+
+    async def get(self, request, slug, camera_id):
+        """Get stream URL for camera."""
+        hass = request.app["hass"]
+        entry = get_entry_by_slug(hass, slug)
+        if not entry:
+            return web.json_response({"error": "Share not found"}, status=404)
+
+        cookie_name = f"campass_{slug}"
+        token = request.cookies.get(cookie_name)
+        secret = hass.data[DOMAIN][entry.entry_id]["jwt_secret"]
+        if not token or not verify_jwt_token(token, slug, secret):
+            return web.json_response({"error": "Unauthorized"}, status=401)
+
+        if not get_switch_entity(hass, entry):
+            return web.json_response({"error": "Sharing is disabled"}, status=403)
+
+        if camera_id not in entry.data["cameras"]:
+            return web.json_response({"error": "Camera not allowed"}, status=403)
+
+        # Try to get HLS stream URL from HA's stream component
+        try:
+            camera = _get_camera_entity(hass, camera_id)
+            if camera:
+                stream = await camera.async_create_stream()
+                if stream:
+                    stream.add_provider("hls")
+                    await stream.start()
+                    url = stream.endpoint_url("hls")
+                    _LOGGER.debug("HLS stream URL for %s: %s", camera_id, url)
+                    return web.json_response({"type": "hls", "url": url})
+        except Exception as err:
+            _LOGGER.warning("Failed to create HLS stream for %s: %s", camera_id, err)
+
+        # Fallback to MJPEG
+        return web.json_response({
+            "type": "mjpeg",
+            "url": f"/campass/{slug}/api/stream/{camera_id}",
+        })
+
+
 class CamPassStreamView(HomeAssistantView):
-    """View for camera stream proxy."""
+    """Proxy MJPEG camera stream (fallback)."""
 
     requires_auth = False
     url = "/campass/{slug}/api/stream/{camera_id:.+}"
@@ -215,57 +267,25 @@ class CamPassStreamView(HomeAssistantView):
         if not entry:
             return web.Response(text="Share not found", status=404)
 
-        # Verify JWT token
         cookie_name = f"campass_{slug}"
         token = request.cookies.get(cookie_name)
         secret = hass.data[DOMAIN][entry.entry_id]["jwt_secret"]
-        
         if not token or not verify_jwt_token(token, slug, secret):
             return web.Response(text="Unauthorized", status=401)
 
-        # Check if sharing is enabled
         if not get_switch_entity(hass, entry):
             return web.Response(text="Sharing is disabled", status=403)
 
-        # Check if camera is in allowed list
         if camera_id not in entry.data["cameras"]:
             return web.Response(text="Camera not allowed", status=403)
 
-        # Get camera entity via entity component
-        camera = None
-        try:
-            component = hass.data.get("camera")
-            if component and hasattr(component, "get_entity"):
-                camera = component.get_entity(camera_id)
-        except (KeyError, AttributeError) as err:
-            _LOGGER.debug("Could not get camera entity via component: %s", err)
-
-        if not camera:
-            # Try via entity registry + platform
-            try:
-                from homeassistant.helpers.entity_component import EntityComponent
-                for comp in hass.data.values():
-                    if isinstance(comp, EntityComponent):
-                        entity = comp.get_entity(camera_id)
-                        if entity and hasattr(entity, "handle_async_mjpeg_stream"):
-                            camera = entity
-                            break
-            except Exception as err:
-                _LOGGER.debug("Entity component lookup failed: %s", err)
-
-        # Try using native MJPEG stream if available
+        # Try native MJPEG
+        camera = _get_camera_entity(hass, camera_id)
         if camera and hasattr(camera, "handle_async_mjpeg_stream"):
             try:
-                _LOGGER.debug("Using native MJPEG stream for %s", camera_id)
                 return await camera.handle_async_mjpeg_stream(request)
             except Exception as err:
-                _LOGGER.warning(
-                    "Failed to use native MJPEG stream for %s: %s",
-                    camera_id,
-                    err,
-                )
-        else:
-            _LOGGER.debug("Falling back to snapshot polling for %s", camera_id)
+                _LOGGER.warning("Native MJPEG failed for %s: %s", camera_id, err)
 
         # Fallback: snapshot polling at 2fps
         response = web.StreamResponse()
@@ -285,12 +305,21 @@ class CamPassStreamView(HomeAssistantView):
                 except Exception as err:
                     _LOGGER.error("Error fetching image from %s: %s", camera_id, err)
                     break
-
-                await asyncio.sleep(0.5)  # 2fps
-
+                await asyncio.sleep(0.5)
         except asyncio.CancelledError:
             pass
         finally:
             await response.write_eof()
 
         return response
+
+
+def _get_camera_entity(hass, camera_id):
+    """Get camera entity object."""
+    try:
+        component = hass.data.get("camera")
+        if component and hasattr(component, "get_entity"):
+            return component.get_entity(camera_id)
+    except (KeyError, AttributeError):
+        pass
+    return None
