@@ -6,6 +6,10 @@
 
 PIN-protected camera sharing for [Home Assistant](https://www.home-assistant.io/). Share live camera feeds with family, guests, or service providers — no HA account required.
 
+<p align="center">
+  <img src="screenshots/pin-pad.jpg" alt="CamPass PIN pad" width="300">
+</p>
+
 ## Features
 
 - 📱 **iPhone-style PIN pad** — clean, mobile-first unlock screen
