@@ -269,14 +269,35 @@
         }
 
         function loadHlsStream(url) {
-            viewerContainer.innerHTML = '<video class="stream" id="hlsVideo" autoplay muted playsinline></video>';
+            viewerContainer.innerHTML = `
+                <div class="loading" id="streamLoading">
+                    <div class="spinner"></div>
+                    <div>Connecting to camera...</div>
+                </div>
+                <video class="stream" id="hlsVideo" autoplay muted playsinline style="display:none"></video>
+            `;
             const video = document.getElementById('hlsVideo');
+            const loading = document.getElementById('streamLoading');
+
+            function onPlaying() {
+                loading.style.display = 'none';
+                video.style.display = 'block';
+            }
+            video.addEventListener('playing', onPlaying);
+
+            // Timeout fallback — if nothing plays in 10s, try MJPEG
+            const timeout = setTimeout(() => {
+                if (video.paused || video.readyState < 2) {
+                    destroyStream();
+                    loadMjpegStream(currentCamera);
+                }
+            }, 10000);
+            video.addEventListener('playing', () => clearTimeout(timeout));
 
             if (video.canPlayType('application/vnd.apple.mpegurl')) {
-                // Safari native HLS
                 video.src = url;
                 video.addEventListener('error', () => {
-                    // Fallback to MJPEG
+                    clearTimeout(timeout);
                     loadMjpegStream(currentCamera);
                 });
             } else if (Hls.isSupported()) {
@@ -289,22 +310,36 @@
                 currentHls.attachMedia(video);
                 currentHls.on(Hls.Events.ERROR, (event, data) => {
                     if (data.fatal) {
+                        clearTimeout(timeout);
                         destroyStream();
                         loadMjpegStream(currentCamera);
                     }
                 });
             } else {
+                clearTimeout(timeout);
                 loadMjpegStream(currentCamera);
             }
         }
 
         function loadMjpegStream(cameraId) {
             viewerContainer.innerHTML = `
-                <img class="stream"
+                <div class="loading" id="mjpegLoading">
+                    <div class="spinner"></div>
+                    <div>Connecting to camera...</div>
+                </div>
+                <img class="stream" id="mjpegImg" style="display:none"
                      src="/campass/${slug}/api/stream/${cameraId}"
-                     alt="Camera Stream"
-                     onerror="showMessage('Stream Error', 'Unable to load camera stream.', true)">
+                     alt="Camera Stream">
             `;
+            const img = document.getElementById('mjpegImg');
+            const loading = document.getElementById('mjpegLoading');
+            img.onload = () => {
+                loading.style.display = 'none';
+                img.style.display = 'block';
+            };
+            img.onerror = () => {
+                showMessage('Stream Error', 'Unable to load camera stream.', true);
+            };
         }
 
         function destroyStream() {
