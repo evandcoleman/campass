@@ -8,7 +8,8 @@
                     "name": "Share name",
                     "auth_type": "Authentication type",
                     "passcode": "Passcode",
-                    "slug": "URL slug (optional, auto-generated from name)"
+                    "slug": "URL slug (optional, auto-generated from name)",
+                    "persistent_session": "Persistent session (no expiration)"
                 }
             },
             "cameras": {
@@ -41,7 +42,8 @@
                     "auth_type": "Authentication type",
                     "passcode": "Passcode",
                     "slug": "URL slug",
-                    "cameras": "Cameras"
+                    "cameras": "Cameras",
+                    "persistent_session": "Persistent session (no expiration)"
                 }
             }
         },

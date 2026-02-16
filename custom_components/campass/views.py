@@ -11,7 +11,7 @@ from homeassistant.components.http import HomeAssistantView
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.event import async_track_state_change_event
 
-from .const import DOMAIN
+from .const import CONF_PERSISTENT_SESSION, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -37,12 +37,11 @@ def is_sharing_enabled(hass: HomeAssistant, entry) -> bool:
     return state is not None and state.state == "on"
 
 
-def create_jwt_token(slug: str, secret: str) -> str:
+def create_jwt_token(slug: str, secret: str, persistent: bool = False) -> str:
     """Create a JWT token."""
-    payload = {
-        "slug": slug,
-        "exp": datetime.now(timezone.utc) + timedelta(hours=24),
-    }
+    payload = {"slug": slug}
+    if not persistent:
+        payload["exp"] = datetime.now(timezone.utc) + timedelta(hours=24)
     return jwt.encode(payload, secret, algorithm="HS256")
 
 
@@ -175,13 +174,16 @@ class CamPassAuthView(HomeAssistantView):
         stored_passcode = entry.data.get("passcode", entry.data.get("pin", ""))
         if pin == stored_passcode:
             secret = hass.data[DOMAIN][entry.entry_id]["jwt_secret"]
-            token = create_jwt_token(slug, secret)
+            persistent = entry.data.get(CONF_PERSISTENT_SESSION, False)
+            token = create_jwt_token(slug, secret, persistent=persistent)
 
             response = web.json_response({"success": True})
+            # 10 years for persistent, 24h otherwise
+            max_age = 315360000 if persistent else 86400
             response.set_cookie(
                 f"campass_{slug}",
                 token,
-                max_age=86400,
+                max_age=max_age,
                 httponly=True,
                 samesite="Lax",
             )
