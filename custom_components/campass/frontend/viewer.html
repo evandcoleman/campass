@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>{{SHARE_NAME}} - CamPass</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: #000000;
+            color: #ffffff;
+            overflow: hidden;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header {
+            background: rgba(0, 0, 0, 0.8);
+            padding: 12px 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            backdrop-filter: blur(10px);
+            z-index: 100;
+        }
+
+        .share-name {
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #4caf50;
+            animation: pulse 2s ease infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .camera-selector {
+            background: rgba(0, 0, 0, 0.8);
+            padding: 12px 16px;
+            overflow-x: auto;
+            overflow-y: hidden;
+            white-space: nowrap;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: none;
+            z-index: 99;
+        }
+
+        .camera-selector::-webkit-scrollbar {
+            display: none;
+        }
+
+        .camera-selector.hidden {
+            display: none;
+        }
+
+        .camera-tab {
+            display: inline-block;
+            padding: 8px 16px;
+            margin-right: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border: none;
+            border-radius: 20px;
+            color: #ffffff;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            white-space: nowrap;
+        }
+
+        .camera-tab.active {
+            background: #6c63ff;
+        }
+
+        .camera-tab:active {
+            transform: scale(0.95);
+        }
+
+        .viewer-container {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #000000;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .stream {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .message {
+            text-align: center;
+            padding: 40px 20px;
+        }
+
+        .message-title {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 12px;
+        }
+
+        .message-text {
+            font-size: 14px;
+            color: #a0a0c0;
+            margin-bottom: 24px;
+        }
+
+        .retry-button {
+            display: inline-block;
+            padding: 12px 32px;
+            background: #6c63ff;
+            border: none;
+            border-radius: 24px;
+            color: #ffffff;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .retry-button:active {
+            transform: scale(0.95);
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px 20px;
+            color: #a0a0c0;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 40px;
+            height: 40px;
+            border: 3px solid rgba(108, 99, 255, 0.3);
+            border-top-color: #6c63ff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 16px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="share-name">{{SHARE_NAME}}</div>
+        <div class="status">
+            <div class="status-dot"></div>
+            <span>LIVE</span>
+        </div>
+    </div>
+
+    <div class="camera-selector hidden" id="cameraSelector"></div>
+
+    <div class="viewer-container" id="viewerContainer">
+        <div class="loading">
+            <div class="spinner"></div>
+            <div>Loading...</div>
+        </div>
+    </div>
+
+    <script>
+        const slug = window.location.pathname.split('/')[2];
+        let cameras = [];
+        let currentCamera = null;
+        let statusCheckInterval = null;
+
+        const viewerContainer = document.getElementById('viewerContainer');
+        const cameraSelector = document.getElementById('cameraSelector');
+
+        async function checkStatus() {
+            try {
+                const response = await fetch(`/campass/${slug}/api/status`);
+                
+                if (response.status === 401) {
+                    window.location.href = `/campass/${slug}/`;
+                    return;
+                }
+
+                const data = await response.json();
+
+                if (!data.available) {
+                    showMessage('Camera Not Available', 'Sharing has been disabled by the owner.', true);
+                    return;
+                }
+
+                cameras = data.cameras;
+                
+                if (cameras.length === 0) {
+                    showMessage('No Cameras', 'No cameras are currently available.', false);
+                    return;
+                }
+
+                // Set initial camera if not set
+                if (!currentCamera && cameras.length > 0) {
+                    currentCamera = cameras[0].entity_id;
+                }
+
+                setupUI();
+                showStream();
+
+            } catch (error) {
+                showMessage('Connection Error', 'Unable to connect to camera feed.', true);
+            }
+        }
+
+        function setupUI() {
+            // Setup camera selector if multiple cameras
+            if (cameras.length > 1) {
+                cameraSelector.classList.remove('hidden');
+                cameraSelector.innerHTML = '';
+                
+                cameras.forEach(camera => {
+                    const tab = document.createElement('button');
+                    tab.className = 'camera-tab';
+                    tab.textContent = camera.name;
+                    tab.dataset.cameraId = camera.entity_id;
+                    
+                    if (camera.entity_id === currentCamera) {
+                        tab.classList.add('active');
+                    }
+                    
+                    tab.addEventListener('click', () => {
+                        currentCamera = camera.entity_id;
+                        
+                        // Update active state
+                        cameraSelector.querySelectorAll('.camera-tab').forEach(t => {
+                            t.classList.remove('active');
+                        });
+                        tab.classList.add('active');
+                        
+                        showStream();
+                    });
+                    
+                    cameraSelector.appendChild(tab);
+                });
+            } else {
+                cameraSelector.classList.add('hidden');
+            }
+        }
+
+        function showStream() {
+            viewerContainer.innerHTML = `
+                <img class="stream" 
+                     src="/campass/${slug}/api/stream/${currentCamera}" 
+                     alt="Camera Stream"
+                     onerror="handleStreamError()">
+            `;
+        }
+
+        function showMessage(title, text, showRetry) {
+            viewerContainer.innerHTML = `
+                <div class="message">
+                    <div class="message-title">${title}</div>
+                    <div class="message-text">${text}</div>
+                    ${showRetry ? '<button class="retry-button" onclick="checkStatus()">Retry</button>' : ''}
+                </div>
+            `;
+        }
+
+        function handleStreamError() {
+            showMessage('Stream Error', 'Unable to load camera stream.', true);
+        }
+
+        // Initial load
+        checkStatus();
+
+        // Poll status every 30 seconds
+        statusCheckInterval = setInterval(checkStatus, 30000);
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            if (statusCheckInterval) {
+                clearInterval(statusCheckInterval);
+            }
+        });
+    </script>
+</body>
+</html>
