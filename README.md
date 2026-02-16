@@ -1,206 +1,92 @@
-# 🎥 CamPass
+# 🔐 CamPass
 
-**PIN-protected camera sharing for Home Assistant**
+[![GitHub Release](https://img.shields.io/github/v/release/evandcoleman/campass?style=flat-square)](https://github.com/evandcoleman/campass/releases)
+[![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg?style=flat-square)](https://github.com/hacs/integration)
+[![License](https://img.shields.io/github/license/evandcoleman/campass?style=flat-square)](LICENSE)
 
-CamPass lets you create secure, PIN-protected links to share your Home Assistant cameras with family, friends, pet sitters, or anyone who needs temporary access — without giving them full Home Assistant access.
+PIN-protected camera sharing for [Home Assistant](https://www.home-assistant.io/). Share live camera feeds with family, guests, or service providers — no HA account required.
 
-## ✨ Features
+## Features
 
-- 📱 **Mobile-first design** — Beautiful, responsive PIN pad and viewer
-- 🔐 **PIN authentication** — 4-digit PIN protection for each share
-- 🎛️ **Multiple instances** — Create unlimited shares, each with its own PIN and camera selection
-- 🎚️ **Toggle control** — Enable/disable sharing instantly with a switch entity
-- 📹 **Multi-camera support** — Share one or multiple cameras per link
-- 🔗 **Clean URLs** — Friendly URLs like `/campass/emily/` or `/campass/pet-sitter/`
-- 🍪 **JWT authentication** — Secure, 24-hour session cookies
-- 🎨 **Native HA integration** — Fully integrated with Home Assistant's config flow UI
-- 📺 **MJPEG streaming** — Real-time camera feeds with fallback to snapshot polling
+- 📱 **iPhone-style PIN pad** — clean, mobile-first unlock screen
+- 🔑 **Flexible auth** — 4-digit, 6-digit, or alphanumeric passcodes
+- 📷 **Multi-camera support** — select which cameras each person can see
+- 🔄 **Multiple shares** — create separate links with different PINs and cameras
+- 🔘 **Switch entity** — enable/disable each share instantly (great for automations)
+- 🔒 **Secure by default** — JWT cookies, per-share secrets, sharing off on restart
 
-## 🚀 Installation
+## Use Cases
 
-### HACS (Recommended)
+- Baby monitor access for family
+- Pet camera for the dog walker
+- Front door cam for a delivery window
+- Guest camera access during a stay
 
-1. Open **HACS** in Home Assistant
-2. Click the **⋮** menu (top right) → **Custom repositories**
-3. Add repository URL: `https://github.com/evandcoleman/campass`
-4. Category: **Integration**
-5. Click **Add**
-6. Search for **CamPass** and click **Download**
-7. Restart Home Assistant
+## Installation
 
-### Manual Installation
+### HACS (recommended)
 
-1. Download the `custom_components/campass` folder from this repository
-2. Copy it to your Home Assistant `custom_components/` directory:
-   ```
-   config/
-   └── custom_components/
-       └── campass/
-           ├── __init__.py
-           ├── manifest.json
-           ├── config_flow.py
-           ├── switch.py
-           ├── const.py
-           ├── views.py
-           ├── strings.json
-           ├── translations/
-           │   └── en.json
-           └── frontend/
-               ├── pin.html
-               └── viewer.html
-   ```
-3. Restart Home Assistant
+1. Open HACS → Integrations → ⋮ → **Custom repositories**
+2. Add `evandcoleman/campass` with category **Integration**
+3. Install **CamPass** and restart Home Assistant
 
-## ⚙️ Configuration
+### Manual
 
-### Creating a Share
+1. Copy `custom_components/campass` to your HA `config/custom_components/` directory
+2. Restart Home Assistant
 
-1. Go to **Settings** → **Devices & Services**
-2. Click **+ Add Integration**
-3. Search for **CamPass**
-4. Follow the setup wizard:
-   - **Step 1**: Enter a name (e.g., "Emily's Access"), 4-digit PIN, and optional URL slug
-   - **Step 2**: Select which cameras to share
-5. Click **Submit**
+## Setup
 
-A switch entity will be created: `switch.campass_<slug>`
+1. Go to **Settings → Integrations → Add Integration → CamPass**
+2. Enter a name (e.g. "Emily"), choose auth type, set a passcode
+3. Select which cameras to share
+4. Turn on the `switch.campass_<name>` entity to enable sharing
 
-### Updating a Share
+Repeat to create additional shares with different settings.
 
-1. Go to the CamPass integration card
-2. Click **Configure** on the share you want to update
-3. Modify the name, PIN, slug, or camera selection
-4. Click **Submit**
+## Usage
 
-### Multiple Shares
+Share the URL with your guest:
 
-You can create as many shares as you need! Each one gets:
-- Its own unique URL
-- Its own PIN
-- Its own camera selection
-- Its own switch entity
+```
+http://YOUR_HA_ADDRESS:8123/campass/emily/
+```
 
-**Example:**
-- `/campass/emily/` — PIN: 1234 — Cameras: Nursery, Living Room
-- `/campass/pet-sitter/` — PIN: 5678 — Cameras: Kitchen, Front Door
-- `/campass/guest/` — PIN: 9999 — Cameras: Entryway
+They enter the passcode and see the live camera feed. When you turn off the switch, they see "Camera not available."
 
-## 📖 Usage
+### Automations
 
-### Sharing with Someone
+Use the switch entity to schedule access:
 
-1. **Enable the share**: Turn on the switch entity (`switch.campass_<slug>`)
-2. **Share the URL**: Send them `http://your-home-assistant:8123/campass/<slug>/`
-3. **Share the PIN**: Give them the 4-digit PIN (via text, call, etc.)
-4. **Monitor access**: The switch entity shows the URL and camera list as attributes
-5. **Disable when done**: Turn off the switch to revoke access
+```yaml
+automation:
+  - alias: "Enable baby cam sharing at bedtime"
+    trigger:
+      - platform: time
+        at: "19:00:00"
+    action:
+      - service: switch.turn_on
+        target:
+          entity_id: switch.campass_emily
 
-### Viewer Experience
+  - alias: "Disable baby cam sharing in morning"
+    trigger:
+      - platform: time
+        at: "07:00:00"
+    action:
+      - service: switch.turn_off
+        target:
+          entity_id: switch.campass_emily
+```
 
-1. Recipient opens the URL
-2. They see a beautiful PIN pad (dark gradient, iOS-style)
-3. They enter the 4-digit PIN
-4. On success, they're redirected to the camera viewer
-5. Viewer shows:
-   - Share name + live indicator in header
-   - Camera selector (if multiple cameras)
-   - Full-screen MJPEG stream
-   - "Camera Not Available" message if sharing is disabled
-6. Session lasts 24 hours (or until the switch is turned off)
+## Security
 
-### URL Structure
+- Passcodes are validated server-side
+- Sessions use signed JWT tokens (httpOnly cookies, 24h expiry)
+- Each share has its own cryptographic secret
+- Sharing defaults to **off** on every HA restart
+- Camera access is restricted to the configured whitelist
 
-- **PIN pad**: `http://your-ha:8123/campass/<slug>/`
-- **Viewer**: `http://your-ha:8123/campass/<slug>/viewer` (requires auth)
-- **API endpoints**:
-  - `POST /campass/<slug>/api/auth` — PIN validation
-  - `GET /campass/<slug>/api/status` — Share status + camera list
-  - `GET /campass/<slug>/api/stream/<camera_entity_id>` — MJPEG stream
+## License
 
-## 🔒 Security
-
-- **No HA credentials required** — Viewers never see your Home Assistant login
-- **PIN authentication** — Each share requires a 4-digit PIN
-- **JWT session cookies** — Secure, httpOnly, SameSite=Lax, 24-hour expiry
-- **Per-instance secrets** — Each share has its own JWT signing secret
-- **Switch control** — Instantly enable/disable sharing (defaults to OFF on restart)
-- **Camera whitelisting** — Only selected cameras are accessible via the share
-- **No persistence** — Switch state resets to OFF on Home Assistant restart (secure by default)
-
-### Best Practices
-
-- Use unique PINs for each share
-- Disable shares when not needed
-- Use descriptive names to track who has access
-- Consider creating temporary shares for short-term needs (e.g., pet sitter during vacation)
-- Change PINs periodically via the options flow
-
-## 📸 Screenshots
-
-### PIN Entry Page
-A dark, gradient background with an iOS-style 4-digit PIN pad. Clean, minimal, mobile-optimized.
-
-### Camera Viewer (Single Camera)
-Full-screen MJPEG stream with share name header and pulsing "LIVE" indicator.
-
-### Camera Viewer (Multiple Cameras)
-Horizontal scrollable camera selector at the top, active camera shown below in full-screen.
-
-### Home Assistant Config
-Native config flow integration with two-step setup (name/PIN/slug, then camera selection).
-
-## 🛠️ Technical Details
-
-- **Platforms**: `switch`
-- **Dependencies**: `camera`
-- **Requirements**: `PyJWT>=2.0.0`
-- **Integration Type**: `service`
-- **IoT Class**: `local_push`
-- **Config Flow**: ✅ Yes
-- **Multiple Instances**: ✅ Yes
-
-### Architecture
-
-- Each config entry is a separate share instance
-- Switch entity controls sharing on/off
-- HTTP views registered once, handle all slugs dynamically
-- JWT secrets generated per-instance at setup
-- MJPEG streaming with native `handle_async_mjpeg_stream` support + snapshot polling fallback
-
-## 📝 License
-
-MIT License
-
-Copyright (c) 2026 Evan Coleman
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-
-## 🙏 Credits
-
-Built with ❤️ for the Home Assistant community.
-
-## 🐛 Issues & Contributions
-
-Found a bug or have a feature request? Please open an issue on GitHub!
-
-Contributions are welcome — feel free to submit a pull request.
-
----
-
-**Enjoy secure camera sharing! 🎥🔐**
+MIT © 2026 Evan Coleman
