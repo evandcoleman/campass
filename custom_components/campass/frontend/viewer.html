@@ -166,13 +166,20 @@
         const viewerContainer = document.getElementById('viewerContainer');
         const cameraSelector = document.getElementById('cameraSelector');
 
+        function redirectToLogin() {
+            window.location.href = `/campass/${slug}/`;
+        }
+
+        async function authFetch(url) {
+            const res = await fetch(url);
+            if (res.status === 401) { redirectToLogin(); return null; }
+            return res;
+        }
+
         async function checkStatus() {
             try {
-                const res = await fetch(`/campass/${slug}/api/status`);
-                if (res.status === 401) {
-                    window.location.href = `/campass/${slug}/`;
-                    return;
-                }
+                const res = await authFetch(`/campass/${slug}/api/status`);
+                if (!res) return;
                 const data = await res.json();
 
                 if (!data.available) {
@@ -219,9 +226,15 @@
                 } catch {}
             };
             eventSource.onerror = () => {
-                // Reconnect after a delay
                 eventSource.close();
-                setTimeout(connectEvents, 5000);
+                // Check if we're still authed before reconnecting
+                fetch(`/campass/${slug}/api/status`).then(res => {
+                    if (res.status === 401) {
+                        redirectToLogin();
+                    } else {
+                        setTimeout(connectEvents, 5000);
+                    }
+                }).catch(() => setTimeout(connectEvents, 5000));
             };
         }
 
@@ -253,7 +266,8 @@
 
             try {
                 // Ask the backend what stream type is available
-                const res = await fetch(`/campass/${slug}/api/stream-info/${cameraId}`);
+                const res = await authFetch(`/campass/${slug}/api/stream-info/${cameraId}`);
+                if (!res) return;
                 if (!res.ok) throw new Error('Stream info request failed');
                 const info = await res.json();
 
