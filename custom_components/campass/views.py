@@ -11,7 +11,7 @@ from homeassistant.components.http import HomeAssistantView
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.event import async_track_state_change_event
 
-from .const import CONF_PERSISTENT_SESSION, DOMAIN
+from .const import CONF_SESSION_DURATION, DOMAIN, SESSION_DURATIONS
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -37,11 +37,11 @@ def is_sharing_enabled(hass: HomeAssistant, entry) -> bool:
     return state is not None and state.state == "on"
 
 
-def create_jwt_token(slug: str, secret: str, persistent: bool = False) -> str:
-    """Create a JWT token."""
+def create_jwt_token(slug: str, secret: str, duration_seconds: int | None = 86400) -> str:
+    """Create a JWT token. None duration = no expiration."""
     payload = {"slug": slug}
-    if not persistent:
-        payload["exp"] = datetime.now(timezone.utc) + timedelta(hours=24)
+    if duration_seconds is not None:
+        payload["exp"] = datetime.now(timezone.utc) + timedelta(seconds=duration_seconds)
     return jwt.encode(payload, secret, algorithm="HS256")
 
 
@@ -174,12 +174,13 @@ class CamPassAuthView(HomeAssistantView):
         stored_passcode = entry.data.get("passcode", entry.data.get("pin", ""))
         if pin == stored_passcode:
             secret = hass.data[DOMAIN][entry.entry_id]["jwt_secret"]
-            persistent = entry.data.get(CONF_PERSISTENT_SESSION, False)
-            token = create_jwt_token(slug, secret, persistent=persistent)
+            duration_key = entry.data.get(CONF_SESSION_DURATION, "24h")
+            _, duration_seconds = SESSION_DURATIONS.get(duration_key, ("24 hours", 86400))
+            token = create_jwt_token(slug, secret, duration_seconds=duration_seconds)
 
             response = web.json_response({"success": True})
-            # 10 years for persistent, 24h otherwise
-            max_age = 315360000 if persistent else 86400
+            # Cookie max_age matches JWT duration, or 10 years for never-expires
+            max_age = duration_seconds if duration_seconds is not None else 315360000
             response.set_cookie(
                 f"campass_{slug}",
                 token,

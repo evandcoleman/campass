@@ -9,7 +9,7 @@ from homeassistant import config_entries
 from homeassistant.core import callback
 from homeassistant.helpers import selector
 
-from .const import CONF_PERSISTENT_SESSION, DOMAIN, AUTH_TYPE_PIN4, AUTH_TYPE_PIN6, AUTH_TYPE_ALPHANUMERIC
+from .const import CONF_SESSION_DURATION, DOMAIN, AUTH_TYPE_PIN4, AUTH_TYPE_PIN6, AUTH_TYPE_ALPHANUMERIC, SESSION_DURATIONS
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -98,7 +98,7 @@ class CamPassConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     "auth_type": auth_type,
                     "passcode": passcode,
                     "slug": slug,
-                    CONF_PERSISTENT_SESSION: user_input.get(CONF_PERSISTENT_SESSION, False),
+                    CONF_SESSION_DURATION: user_input.get(CONF_SESSION_DURATION, "24h"),
                 }
                 return await self.async_step_cameras()
 
@@ -117,7 +117,15 @@ class CamPassConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 ),
                 vol.Required("passcode"): str,
                 vol.Optional("slug"): str,
-                vol.Optional(CONF_PERSISTENT_SESSION, default=False): bool,
+                vol.Optional(CONF_SESSION_DURATION, default="24h"): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=[
+                            selector.SelectOptionDict(value=k, label=v[0])
+                            for k, v in SESSION_DURATIONS.items()
+                        ],
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                    )
+                ),
             }),
             errors=errors,
         )
@@ -210,7 +218,7 @@ class CamPassOptionsFlow(config_entries.OptionsFlow):
                         "passcode": passcode,
                         "slug": slug,
                         "cameras": cameras,
-                        CONF_PERSISTENT_SESSION: user_input.get(CONF_PERSISTENT_SESSION, False),
+                        CONF_SESSION_DURATION: user_input.get(CONF_SESSION_DURATION, "24h"),
                     },
                 )
                 return self.async_create_entry(title="", data={})
@@ -252,9 +260,17 @@ class CamPassOptionsFlow(config_entries.OptionsFlow):
                     )
                 ),
                 vol.Optional(
-                    CONF_PERSISTENT_SESSION,
-                    default=self.config_entry.data.get(CONF_PERSISTENT_SESSION, False),
-                ): bool,
+                    CONF_SESSION_DURATION,
+                    default=self.config_entry.data.get(CONF_SESSION_DURATION, "24h"),
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=[
+                            selector.SelectOptionDict(value=k, label=v[0])
+                            for k, v in SESSION_DURATIONS.items()
+                        ],
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                    )
+                ),
             }),
             errors=errors,
         )

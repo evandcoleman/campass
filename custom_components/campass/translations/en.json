@@ -9,7 +9,7 @@
                     "auth_type": "Authentication type",
                     "passcode": "Passcode",
                     "slug": "URL slug (optional, auto-generated from name)",
-                    "persistent_session": "Persistent session (no expiration)"
+                    "session_duration": "Session duration"
                 }
             },
             "cameras": {
@@ -43,7 +43,7 @@
                     "passcode": "Passcode",
                     "slug": "URL slug",
                     "cameras": "Cameras",
-                    "persistent_session": "Persistent session (no expiration)"
+                    "session_duration": "Session duration"
                 }
             }
         },
