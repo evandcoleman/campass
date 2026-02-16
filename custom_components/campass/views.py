@@ -1,8 +1,7 @@
 """HTTP views for CamPass."""
 import asyncio
 import logging
-import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import jwt
@@ -10,17 +9,13 @@ from aiohttp import web
 from homeassistant.components.camera import async_get_image
 from homeassistant.components.http import HomeAssistantView
 from homeassistant.core import HomeAssistant
-
-try:
-    from homeassistant.components.camera import async_get_stream
-except ImportError:
-    async_get_stream = None
-
 from homeassistant.helpers.event import async_track_state_change_event
 
 from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
+
+FRONTEND_DIR = Path(__file__).parent / "frontend"
 
 
 def get_entry_by_slug(hass: HomeAssistant, slug: str):
@@ -31,20 +26,22 @@ def get_entry_by_slug(hass: HomeAssistant, slug: str):
     return None
 
 
-def get_switch_entity(hass: HomeAssistant, entry):
-    """Get the switch entity for a config entry."""
-    entity_id = f"switch.campass_{entry.data['slug']}"
-    state = hass.states.get(entity_id)
-    if state:
-        return state.state == "on"
-    return False
+def get_switch_entity_id(entry) -> str:
+    """Get the switch entity ID for a config entry."""
+    return f"switch.campass_{entry.data['slug']}"
+
+
+def is_sharing_enabled(hass: HomeAssistant, entry) -> bool:
+    """Check if sharing is enabled for a config entry."""
+    state = hass.states.get(get_switch_entity_id(entry))
+    return state is not None and state.state == "on"
 
 
 def create_jwt_token(slug: str, secret: str) -> str:
     """Create a JWT token."""
     payload = {
         "slug": slug,
-        "exp": datetime.utcnow() + timedelta(hours=24),
+        "exp": datetime.now(timezone.utc) + timedelta(hours=24),
     }
     return jwt.encode(payload, secret, algorithm="HS256")
 
@@ -54,12 +51,49 @@ def verify_jwt_token(token: str, slug: str, secret: str) -> bool:
     try:
         payload = jwt.decode(token, secret, algorithms=["HS256"])
         return payload.get("slug") == slug
-    except jwt.ExpiredSignatureError:
-        _LOGGER.debug("JWT token expired")
+    except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
         return False
-    except jwt.InvalidTokenError:
-        _LOGGER.debug("Invalid JWT token")
+
+
+def _get_entry_and_verify(hass, slug, cookie_prefix="campass"):
+    """Get config entry and verify JWT. Returns (entry, error_response) tuple."""
+    entry = get_entry_by_slug(hass, slug)
+    if not entry:
+        return None, web.json_response({"error": "Share not found"}, status=404)
+
+    entry_data = hass.data.get(DOMAIN, {}).get(entry.entry_id)
+    if not entry_data or "jwt_secret" not in entry_data:
+        return None, web.json_response({"error": "Not configured"}, status=500)
+
+    return entry, None
+
+
+def _verify_cookie(request, slug, entry, hass):
+    """Verify the JWT cookie for a request. Returns True if valid."""
+    token = request.cookies.get(f"campass_{slug}")
+    if not token:
         return False
+    secret = hass.data[DOMAIN][entry.entry_id]["jwt_secret"]
+    return verify_jwt_token(token, slug, secret)
+
+
+def _get_camera_entity(hass, camera_id):
+    """Get camera entity object from HA's camera component."""
+    try:
+        component = hass.data.get("camera")
+        if component and hasattr(component, "get_entity"):
+            return component.get_entity(camera_id)
+    except (KeyError, AttributeError):
+        pass
+    return None
+
+
+def _serve_html(filename: str, replacements: dict) -> web.Response:
+    """Serve an HTML file with template replacements."""
+    html = (FRONTEND_DIR / filename).read_text()
+    for key, value in replacements.items():
+        html = html.replace(f"{{{{{key}}}}}", value)
+    return web.Response(text=html, content_type="text/html")
 
 
 class CamPassRedirectView(HomeAssistantView):
@@ -75,7 +109,7 @@ class CamPassRedirectView(HomeAssistantView):
 
 
 class CamPassPinView(HomeAssistantView):
-    """View for PIN entry page."""
+    """Serve the PIN entry page."""
 
     requires_auth = False
     url = "/campass/{slug}/"
@@ -87,19 +121,15 @@ class CamPassPinView(HomeAssistantView):
         if not entry:
             return web.Response(text="Share not found", status=404)
 
-        html_path = Path(__file__).parent / "frontend" / "pin.html"
-        html = html_path.read_text()
-        
-        # Inject template variables
-        html = html.replace("{{SHARE_NAME}}", entry.data["name"])
-        html = html.replace("{{SLUG}}", slug)
-        html = html.replace("{{AUTH_TYPE}}", entry.data.get("auth_type", "pin4"))
-        
-        return web.Response(text=html, content_type="text/html")
+        return _serve_html("pin.html", {
+            "SHARE_NAME": entry.data["name"],
+            "SLUG": slug,
+            "AUTH_TYPE": entry.data.get("auth_type", "pin4"),
+        })
 
 
 class CamPassViewerView(HomeAssistantView):
-    """View for camera viewer page."""
+    """Serve the camera viewer page."""
 
     requires_auth = False
     url = "/campass/{slug}/viewer"
@@ -107,30 +137,23 @@ class CamPassViewerView(HomeAssistantView):
 
     async def get(self, request, slug):
         """Serve the viewer page."""
-        entry = get_entry_by_slug(request.app["hass"], slug)
+        hass = request.app["hass"]
+        entry = get_entry_by_slug(hass, slug)
         if not entry:
             return web.Response(text="Share not found", status=404)
 
-        # Verify JWT token
-        cookie_name = f"campass_{slug}"
-        token = request.cookies.get(cookie_name)
-        secret = request.app["hass"].data[DOMAIN][entry.entry_id]["jwt_secret"]
-        
-        if not token or not verify_jwt_token(token, slug, secret):
-            return web.Response(text="Unauthorized", status=401)
+        if not _verify_cookie(request, slug, entry, hass):
+            # Redirect to PIN page instead of showing raw 401
+            raise web.HTTPFound(f"/campass/{slug}/")
 
-        html_path = Path(__file__).parent / "frontend" / "viewer.html"
-        html = html_path.read_text()
-        
-        # Inject share name
-        html = html.replace("{{SHARE_NAME}}", entry.data["name"])
-        html = html.replace("{{SLUG}}", slug)
-        
-        return web.Response(text=html, content_type="text/html")
+        return _serve_html("viewer.html", {
+            "SHARE_NAME": entry.data["name"],
+            "SLUG": slug,
+        })
 
 
 class CamPassAuthView(HomeAssistantView):
-    """View for PIN authentication."""
+    """Handle PIN authentication."""
 
     requires_auth = False
     url = "/campass/{slug}/api/auth"
@@ -138,9 +161,10 @@ class CamPassAuthView(HomeAssistantView):
 
     async def post(self, request, slug):
         """Authenticate with PIN."""
-        entry = get_entry_by_slug(request.app["hass"], slug)
-        if not entry:
-            return web.json_response({"error": "Share not found"}, status=404)
+        hass = request.app["hass"]
+        entry, err = _get_entry_and_verify(hass, slug)
+        if err:
+            return err
 
         try:
             data = await request.json()
@@ -148,27 +172,26 @@ class CamPassAuthView(HomeAssistantView):
         except Exception:
             return web.json_response({"error": "Invalid request"}, status=400)
 
-        if pin == entry.data.get("passcode", entry.data.get("pin", "")):
-            # Create JWT token
-            secret = request.app["hass"].data[DOMAIN][entry.entry_id]["jwt_secret"]
+        stored_passcode = entry.data.get("passcode", entry.data.get("pin", ""))
+        if pin == stored_passcode:
+            secret = hass.data[DOMAIN][entry.entry_id]["jwt_secret"]
             token = create_jwt_token(slug, secret)
-            
-            # Set cookie
+
             response = web.json_response({"success": True})
             response.set_cookie(
                 f"campass_{slug}",
                 token,
-                max_age=86400,  # 24 hours
+                max_age=86400,
                 httponly=True,
                 samesite="Lax",
             )
             return response
-        else:
-            return web.json_response({"error": "Invalid PIN"}, status=401)
+
+        return web.json_response({"error": "Invalid PIN"}, status=401)
 
 
 class CamPassStatusView(HomeAssistantView):
-    """View for status endpoint."""
+    """Return camera availability status."""
 
     requires_auth = False
     url = "/campass/{slug}/api/status"
@@ -177,24 +200,17 @@ class CamPassStatusView(HomeAssistantView):
     async def get(self, request, slug):
         """Get share status."""
         hass = request.app["hass"]
-        entry = get_entry_by_slug(hass, slug)
-        if not entry:
-            return web.json_response({"error": "Share not found"}, status=404)
+        entry, err = _get_entry_and_verify(hass, slug)
+        if err:
+            return err
 
-        # Verify JWT token
-        cookie_name = f"campass_{slug}"
-        token = request.cookies.get(cookie_name)
-        secret = hass.data[DOMAIN][entry.entry_id]["jwt_secret"]
-        
-        if not token or not verify_jwt_token(token, slug, secret):
+        if not _verify_cookie(request, slug, entry, hass):
             return web.json_response({"error": "Unauthorized"}, status=401)
 
-        # Check if sharing is enabled
-        available = get_switch_entity(hass, entry)
+        available = is_sharing_enabled(hass, entry)
 
-        # Get camera info
         cameras = []
-        for camera_id in entry.data["cameras"]:
+        for camera_id in entry.data.get("cameras", []):
             state = hass.states.get(camera_id)
             if state:
                 cameras.append({
@@ -209,7 +225,7 @@ class CamPassStatusView(HomeAssistantView):
 
 
 class CamPassEventsView(HomeAssistantView):
-    """Server-Sent Events endpoint for real-time status updates."""
+    """Server-Sent Events for real-time status updates."""
 
     requires_auth = False
     url = "/campass/{slug}/api/events"
@@ -218,14 +234,11 @@ class CamPassEventsView(HomeAssistantView):
     async def get(self, request, slug):
         """Stream status events."""
         hass = request.app["hass"]
-        entry = get_entry_by_slug(hass, slug)
-        if not entry:
-            return web.Response(text="Share not found", status=404)
+        entry, err = _get_entry_and_verify(hass, slug)
+        if err:
+            return err
 
-        cookie_name = f"campass_{slug}"
-        token = request.cookies.get(cookie_name)
-        secret = hass.data[DOMAIN][entry.entry_id]["jwt_secret"]
-        if not token or not verify_jwt_token(token, slug, secret):
+        if not _verify_cookie(request, slug, entry, hass):
             return web.Response(text="Unauthorized", status=401)
 
         response = web.StreamResponse()
@@ -235,36 +248,34 @@ class CamPassEventsView(HomeAssistantView):
         response.headers["X-Accel-Buffering"] = "no"
         await response.prepare(request)
 
-        # Send initial state
-        available = get_switch_entity(hass, entry)
-        await response.write(f"data: {{\"available\": {str(available).lower()}}}\n\n".encode())
+        available = is_sharing_enabled(hass, entry)
+        await response.write(
+            f"data: {{\"available\": {str(available).lower()}}}\n\n".encode()
+        )
 
-        # Watch for switch state changes
-        switch_entity_id = f"switch.campass_{entry.data['slug']}"
-        event = asyncio.Event()
+        switch_id = get_switch_entity_id(entry)
+        change_event = asyncio.Event()
         state_data = {"available": available}
 
-        def state_changed(ev):
+        def on_state_change(ev):
             new_state = ev.data.get("new_state")
             if new_state:
                 state_data["available"] = new_state.state == "on"
-                event.set()
+                change_event.set()
 
-        unsub = async_track_state_change_event(hass, [switch_entity_id], state_changed)
+        unsub = async_track_state_change_event(hass, [switch_id], on_state_change)
 
         try:
             while True:
-                # Wait for state change or timeout (keepalive every 15s)
                 try:
-                    await asyncio.wait_for(event.wait(), timeout=15.0)
-                    event.clear()
+                    await asyncio.wait_for(change_event.wait(), timeout=15.0)
+                    change_event.clear()
                     await response.write(
                         f"data: {{\"available\": {str(state_data['available']).lower()}}}\n\n".encode()
                     )
                 except asyncio.TimeoutError:
-                    # Send keepalive comment
                     await response.write(b": keepalive\n\n")
-        except (asyncio.CancelledError, ConnectionResetError):
+        except (asyncio.CancelledError, ConnectionResetError, ConnectionError):
             pass
         finally:
             unsub()
@@ -273,7 +284,7 @@ class CamPassEventsView(HomeAssistantView):
 
 
 class CamPassStreamInfoView(HomeAssistantView):
-    """Return HLS stream URL for a camera."""
+    """Return stream URL info for a camera."""
 
     requires_auth = False
     url = "/campass/{slug}/api/stream-info/{camera_id:.+}"
@@ -282,23 +293,20 @@ class CamPassStreamInfoView(HomeAssistantView):
     async def get(self, request, slug, camera_id):
         """Get stream URL for camera."""
         hass = request.app["hass"]
-        entry = get_entry_by_slug(hass, slug)
-        if not entry:
-            return web.json_response({"error": "Share not found"}, status=404)
+        entry, err = _get_entry_and_verify(hass, slug)
+        if err:
+            return err
 
-        cookie_name = f"campass_{slug}"
-        token = request.cookies.get(cookie_name)
-        secret = hass.data[DOMAIN][entry.entry_id]["jwt_secret"]
-        if not token or not verify_jwt_token(token, slug, secret):
+        if not _verify_cookie(request, slug, entry, hass):
             return web.json_response({"error": "Unauthorized"}, status=401)
 
-        if not get_switch_entity(hass, entry):
+        if not is_sharing_enabled(hass, entry):
             return web.json_response({"error": "Sharing is disabled"}, status=403)
 
-        if camera_id not in entry.data["cameras"]:
+        if camera_id not in entry.data.get("cameras", []):
             return web.json_response({"error": "Camera not allowed"}, status=403)
 
-        # Try to get HLS stream URL from HA's stream component
+        # Try HLS via HA's stream component
         try:
             camera = _get_camera_entity(hass, camera_id)
             if camera:
@@ -307,10 +315,9 @@ class CamPassStreamInfoView(HomeAssistantView):
                     stream.add_provider("hls")
                     await stream.start()
                     url = stream.endpoint_url("hls")
-                    _LOGGER.debug("HLS stream URL for %s: %s", camera_id, url)
                     return web.json_response({"type": "hls", "url": url})
         except Exception as err:
-            _LOGGER.warning("Failed to create HLS stream for %s: %s", camera_id, err)
+            _LOGGER.debug("HLS stream unavailable for %s: %s", camera_id, err)
 
         # Fallback to MJPEG
         return web.json_response({
@@ -329,20 +336,17 @@ class CamPassStreamView(HomeAssistantView):
     async def get(self, request, slug, camera_id):
         """Proxy camera stream."""
         hass = request.app["hass"]
-        entry = get_entry_by_slug(hass, slug)
-        if not entry:
+        entry, err = _get_entry_and_verify(hass, slug)
+        if err:
             return web.Response(text="Share not found", status=404)
 
-        cookie_name = f"campass_{slug}"
-        token = request.cookies.get(cookie_name)
-        secret = hass.data[DOMAIN][entry.entry_id]["jwt_secret"]
-        if not token or not verify_jwt_token(token, slug, secret):
+        if not _verify_cookie(request, slug, entry, hass):
             return web.Response(text="Unauthorized", status=401)
 
-        if not get_switch_entity(hass, entry):
+        if not is_sharing_enabled(hass, entry):
             return web.Response(text="Sharing is disabled", status=403)
 
-        if camera_id not in entry.data["cameras"]:
+        if camera_id not in entry.data.get("cameras", []):
             return web.Response(text="Camera not allowed", status=403)
 
         # Try native MJPEG
@@ -353,7 +357,7 @@ class CamPassStreamView(HomeAssistantView):
             except Exception as err:
                 _LOGGER.warning("Native MJPEG failed for %s: %s", camera_id, err)
 
-        # Fallback: snapshot polling at 2fps
+        # Fallback: snapshot polling
         response = web.StreamResponse()
         response.content_type = "multipart/x-mixed-replace; boundary=frame"
         await response.prepare(request)
@@ -369,23 +373,12 @@ class CamPassStreamView(HomeAssistantView):
                         + b"\r\n"
                     )
                 except Exception as err:
-                    _LOGGER.error("Error fetching image from %s: %s", camera_id, err)
+                    _LOGGER.error("Snapshot error for %s: %s", camera_id, err)
                     break
                 await asyncio.sleep(0.5)
-        except asyncio.CancelledError:
+        except (asyncio.CancelledError, ConnectionResetError, ConnectionError):
             pass
         finally:
             await response.write_eof()
 
         return response
-
-
-def _get_camera_entity(hass, camera_id):
-    """Get camera entity object."""
-    try:
-        component = hass.data.get("camera")
-        if component and hasattr(component, "get_entity"):
-            return component.get_entity(camera_id)
-    except (KeyError, AttributeError):
-        pass
-    return None
