@@ -160,7 +160,8 @@
         let cameras = [];
         let currentCamera = null;
         let currentHls = null;
-        let statusInterval = null;
+        let eventSource = null;
+        let isAvailable = false;
 
         const viewerContainer = document.getElementById('viewerContainer');
         const cameraSelector = document.getElementById('cameraSelector');
@@ -175,11 +176,13 @@
                 const data = await res.json();
 
                 if (!data.available) {
+                    isAvailable = false;
                     destroyStream();
                     showMessage('Camera Not Available', 'Sharing has been disabled by the owner.', false);
                     return;
                 }
 
+                isAvailable = true;
                 cameras = data.cameras;
                 if (!cameras.length) {
                     showMessage('No Cameras', 'No cameras are currently available.', false);
@@ -194,6 +197,32 @@
             } catch {
                 showMessage('Connection Error', 'Unable to connect to camera feed.', true);
             }
+        }
+
+        function connectEvents() {
+            if (eventSource) eventSource.close();
+            eventSource = new EventSource(`/campass/${slug}/api/events`);
+            eventSource.onmessage = (e) => {
+                try {
+                    const data = JSON.parse(e.data);
+                    if (data.available && !isAvailable) {
+                        // Sharing just turned on — reload
+                        isAvailable = true;
+                        currentCamera = null;
+                        checkStatus();
+                    } else if (!data.available && isAvailable) {
+                        // Sharing just turned off — kill stream immediately
+                        isAvailable = false;
+                        destroyStream();
+                        showMessage('Camera Not Available', 'Sharing has been disabled by the owner.', false);
+                    }
+                } catch {}
+            };
+            eventSource.onerror = () => {
+                // Reconnect after a delay
+                eventSource.close();
+                setTimeout(connectEvents, 5000);
+            };
         }
 
         function setupCameraTabs() {
@@ -302,7 +331,7 @@
         }
 
         checkStatus();
-        statusInterval = setInterval(checkStatus, 30000);
+        connectEvents();
     </script>
 </body>
 </html>

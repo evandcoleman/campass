@@ -9,6 +9,7 @@ from homeassistant.helpers import config_validation as cv
 from .const import DOMAIN
 from .views import (
     CamPassAuthView,
+    CamPassEventsView,
     CamPassPinView,
     CamPassRedirectView,
     CamPassStatusView,
@@ -44,6 +45,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.http.register_view(CamPassViewerView())
         hass.http.register_view(CamPassAuthView())
         hass.http.register_view(CamPassStatusView())
+        hass.http.register_view(CamPassEventsView())
         hass.http.register_view(CamPassStreamInfoView())
         hass.http.register_view(CamPassStreamView())
         hass.data[DOMAIN]["_views_registered"] = True

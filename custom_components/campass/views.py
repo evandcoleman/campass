@@ -16,6 +16,8 @@ try:
 except ImportError:
     async_get_stream = None
 
+from homeassistant.helpers.event import async_track_state_change_event
+
 from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
@@ -204,6 +206,70 @@ class CamPassStatusView(HomeAssistantView):
             "available": available,
             "cameras": cameras,
         })
+
+
+class CamPassEventsView(HomeAssistantView):
+    """Server-Sent Events endpoint for real-time status updates."""
+
+    requires_auth = False
+    url = "/campass/{slug}/api/events"
+    name = "api:campass:events"
+
+    async def get(self, request, slug):
+        """Stream status events."""
+        hass = request.app["hass"]
+        entry = get_entry_by_slug(hass, slug)
+        if not entry:
+            return web.Response(text="Share not found", status=404)
+
+        cookie_name = f"campass_{slug}"
+        token = request.cookies.get(cookie_name)
+        secret = hass.data[DOMAIN][entry.entry_id]["jwt_secret"]
+        if not token or not verify_jwt_token(token, slug, secret):
+            return web.Response(text="Unauthorized", status=401)
+
+        response = web.StreamResponse()
+        response.content_type = "text/event-stream"
+        response.headers["Cache-Control"] = "no-cache"
+        response.headers["Connection"] = "keep-alive"
+        response.headers["X-Accel-Buffering"] = "no"
+        await response.prepare(request)
+
+        # Send initial state
+        available = get_switch_entity(hass, entry)
+        await response.write(f"data: {{\"available\": {str(available).lower()}}}\n\n".encode())
+
+        # Watch for switch state changes
+        switch_entity_id = f"switch.campass_{entry.data['slug']}"
+        event = asyncio.Event()
+        state_data = {"available": available}
+
+        def state_changed(ev):
+            new_state = ev.data.get("new_state")
+            if new_state:
+                state_data["available"] = new_state.state == "on"
+                event.set()
+
+        unsub = async_track_state_change_event(hass, [switch_entity_id], state_changed)
+
+        try:
+            while True:
+                # Wait for state change or timeout (keepalive every 15s)
+                try:
+                    await asyncio.wait_for(event.wait(), timeout=15.0)
+                    event.clear()
+                    await response.write(
+                        f"data: {{\"available\": {str(state_data['available']).lower()}}}\n\n".encode()
+                    )
+                except asyncio.TimeoutError:
+                    # Send keepalive comment
+                    await response.write(b": keepalive\n\n")
+        except (asyncio.CancelledError, ConnectionResetError):
+            pass
+        finally:
+            unsub()
+
+        return response
 
 
 class CamPassStreamInfoView(HomeAssistantView):
