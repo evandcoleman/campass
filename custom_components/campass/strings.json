@@ -1,68 +1,57 @@
 {
-  "config": {
-    "step": {
-      "user": {
-        "title": "Create Camera Share",
-        "description": "Set up a PIN-protected camera share link. Choose a name and 4-digit PIN.",
-        "data": {
-          "name": "Share Name",
-          "pin": "4-Digit PIN",
-          "slug": "URL Slug (optional)"
+    "config": {
+        "step": {
+            "user": {
+                "title": "Create Camera Share",
+                "description": "Set up a new shared camera link.",
+                "data": {
+                    "name": "Share name",
+                    "auth_type": "Authentication type",
+                    "passcode": "Passcode",
+                    "slug": "URL slug (optional, auto-generated from name)"
+                }
+            },
+            "cameras": {
+                "title": "Select Cameras",
+                "description": "Choose which cameras to include in \"{name}\".",
+                "data": {
+                    "cameras": "Cameras"
+                }
+            }
         },
-        "data_description": {
-          "name": "Friendly name like 'Emily's Access' or 'Pet Sitter'",
-          "pin": "4-digit PIN for viewer authentication",
-          "slug": "Custom URL slug (auto-generated from name if left blank)"
-        }
-      },
-      "cameras": {
-        "title": "Select Cameras",
-        "description": "Choose which cameras to share with '{name}'.",
-        "data": {
-          "cameras": "Cameras"
+        "error": {
+            "invalid_pin4": "Must be exactly 4 digits",
+            "invalid_pin6": "Must be exactly 6 digits",
+            "invalid_alphanumeric": "Password must be at least 4 characters",
+            "invalid_slug": "Slug must be lowercase letters, numbers, and hyphens only (max 32 chars)",
+            "slug_taken": "This URL slug is already in use",
+            "no_cameras_selected": "Select at least one camera"
         },
-        "data_description": {
-          "cameras": "Select one or more camera entities to include in this share"
+        "abort": {
+            "no_cameras": "No camera entities found in Home Assistant"
         }
-      }
     },
-    "error": {
-      "invalid_pin": "PIN must be exactly 4 digits",
-      "invalid_slug": "Slug must be 1-32 characters, lowercase alphanumeric and hyphens only",
-      "slug_taken": "This URL slug is already in use by another share",
-      "no_cameras_selected": "You must select at least one camera"
-    },
-    "abort": {
-      "no_cameras": "No camera entities found in your Home Assistant setup"
+    "options": {
+        "step": {
+            "init": {
+                "title": "Edit Camera Share",
+                "description": "Update settings for this shared camera link.",
+                "data": {
+                    "name": "Share name",
+                    "auth_type": "Authentication type",
+                    "passcode": "Passcode",
+                    "slug": "URL slug",
+                    "cameras": "Cameras"
+                }
+            }
+        },
+        "error": {
+            "invalid_pin4": "Must be exactly 4 digits",
+            "invalid_pin6": "Must be exactly 6 digits",
+            "invalid_alphanumeric": "Password must be at least 4 characters",
+            "invalid_slug": "Slug must be lowercase letters, numbers, and hyphens only (max 32 chars)",
+            "slug_taken": "This URL slug is already in use",
+            "no_cameras_selected": "Select at least one camera"
+        }
     }
-  },
-  "options": {
-    "step": {
-      "init": {
-        "title": "Update Camera Share",
-        "description": "Update the name, PIN, slug, or camera selection for this share.",
-        "data": {
-          "name": "Share Name",
-          "pin": "4-Digit PIN",
-          "slug": "URL Slug",
-          "cameras": "Cameras"
-        },
-        "data_description": {
-          "name": "Friendly name for this share",
-          "pin": "4-digit PIN for viewer authentication",
-          "slug": "URL slug for this share",
-          "cameras": "Camera entities included in this share"
-        }
-      }
-    },
-    "error": {
-      "invalid_pin": "PIN must be exactly 4 digits",
-      "invalid_slug": "Slug must be 1-32 characters, lowercase alphanumeric and hyphens only",
-      "slug_taken": "This URL slug is already in use by another share",
-      "no_cameras_selected": "You must select at least one camera"
-    },
-    "abort": {
-      "no_cameras": "No camera entities found in your Home Assistant setup"
-    }
-  }
 }

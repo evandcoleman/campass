@@ -13,76 +13,76 @@
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
             background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #fff;
             min-height: 100vh;
             display: flex;
-            flex-direction: column;
             align-items: center;
             justify-content: center;
-            color: #ffffff;
-            overflow: hidden;
+            padding: 20px;
+            -webkit-font-smoothing: antialiased;
         }
 
         .container {
             width: 100%;
             max-width: 400px;
-            padding: 20px;
             text-align: center;
         }
 
-        .header {
-            margin-bottom: 60px;
-        }
-
-        .share-name {
-            font-size: 24px;
+        h1 {
+            font-size: 28px;
             font-weight: 600;
             margin-bottom: 8px;
-            color: #ffffff;
         }
 
         .subtitle {
             font-size: 14px;
             color: #a0a0c0;
+            margin-bottom: 40px;
         }
 
+        /* PIN dots display */
         .pin-display {
             display: flex;
             justify-content: center;
             gap: 16px;
-            margin-bottom: 60px;
+            margin-bottom: 40px;
+            min-height: 20px;
         }
 
         .pin-dot {
             width: 16px;
             height: 16px;
-            border: 2px solid #6c63ff;
             border-radius: 50%;
+            border: 2px solid #6c63ff;
+            background: transparent;
             transition: all 0.2s ease;
         }
 
         .pin-dot.filled {
             background: #6c63ff;
-            box-shadow: 0 0 12px rgba(108, 99, 255, 0.6);
+            box-shadow: 0 0 12px rgba(108, 99, 255, 0.5);
         }
 
+        /* Numeric keypad */
         .keypad {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
-            gap: 16px;
+            gap: 14px;
             max-width: 300px;
-            margin: 0 auto;
+            margin: 0 auto 20px;
         }
 
         .key {
-            aspect-ratio: 1;
-            background: rgba(255, 255, 255, 0.1);
-            border: none;
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.1);
             border-radius: 50%;
-            font-size: 28px;
+            width: 100%;
+            aspect-ratio: 1;
+            font-size: 24px;
             font-weight: 500;
-            color: #ffffff;
+            color: #fff;
             cursor: pointer;
             transition: all 0.15s ease;
             display: flex;
@@ -97,31 +97,77 @@
         }
 
         .key.empty {
-            background: transparent;
+            opacity: 0;
+            pointer-events: none;
         }
 
-        .key.backspace {
-            font-size: 20px;
+        .key.delete {
+            font-size: 18px;
+            color: #ff6b6b;
         }
 
-        .error-message {
-            position: fixed;
-            top: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: #ff4757;
-            color: white;
-            padding: 12px 24px;
-            border-radius: 8px;
+        /* Text input for alphanumeric */
+        .text-input-wrapper {
+            margin-bottom: 30px;
+            display: none;
+        }
+
+        .text-input {
+            width: 100%;
+            max-width: 300px;
+            padding: 14px 18px;
+            font-size: 18px;
+            font-family: inherit;
+            background: rgba(255, 255, 255, 0.08);
+            border: 2px solid rgba(108, 99, 255, 0.4);
+            border-radius: 12px;
+            color: #fff;
+            text-align: center;
+            outline: none;
+            transition: border-color 0.2s ease;
+        }
+
+        .text-input:focus {
+            border-color: #6c63ff;
+        }
+
+        .text-input::placeholder {
+            color: rgba(255, 255, 255, 0.3);
+        }
+
+        .submit-btn {
+            display: none;
+            width: 100%;
+            max-width: 300px;
+            margin: 0 auto;
+            padding: 14px;
+            font-size: 16px;
+            font-weight: 600;
+            font-family: inherit;
+            background: #6c63ff;
+            color: #fff;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .submit-btn:active {
+            transform: scale(0.98);
+            background: #5a52d5;
+        }
+
+        /* Error and loading */
+        .error {
+            color: #ff6b6b;
             font-size: 14px;
+            min-height: 20px;
+            margin-top: 20px;
             opacity: 0;
             transition: opacity 0.3s ease;
-            z-index: 1000;
         }
 
-        .error-message.show {
-            opacity: 1;
-        }
+        .error.show { opacity: 1; }
 
         @keyframes shake {
             0%, 100% { transform: translateX(0); }
@@ -129,37 +175,31 @@
             75% { transform: translateX(10px); }
         }
 
-        .shake {
-            animation: shake 0.4s ease;
-        }
+        .shake { animation: shake 0.4s ease; }
 
         .loading {
-            display: none;
-            margin-top: 40px;
-            font-size: 14px;
-            color: #a0a0c0;
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            border-top-color: #6c63ff;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
         }
 
-        .loading.show {
-            display: block;
-        }
+        @keyframes spin { to { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="header">
-            <div class="share-name">{{SHARE_NAME}}</div>
-            <div class="subtitle">Enter PIN to continue</div>
-        </div>
+        <h1>{{SHARE_NAME}}</h1>
+        <p class="subtitle" id="subtitle">Enter passcode</p>
 
-        <div class="pin-display" id="pinDisplay">
-            <div class="pin-dot"></div>
-            <div class="pin-dot"></div>
-            <div class="pin-dot"></div>
-            <div class="pin-dot"></div>
-        </div>
+        <!-- PIN dots (for pin4/pin6 modes) -->
+        <div class="pin-display" id="pinDisplay"></div>
 
-        <div class="keypad">
+        <!-- Numeric keypad (for pin4/pin6 modes) -->
+        <div class="keypad" id="keypad">
             <button class="key" data-key="1">1</button>
             <button class="key" data-key="2">2</button>
             <button class="key" data-key="3">3</button>
@@ -171,108 +211,126 @@
             <button class="key" data-key="9">9</button>
             <button class="key empty"></button>
             <button class="key" data-key="0">0</button>
-            <button class="key backspace" data-key="backspace">⌫</button>
+            <button class="key delete" data-key="del">⌫</button>
         </div>
 
-        <div class="loading" id="loading">Verifying...</div>
+        <!-- Text input (for alphanumeric mode) -->
+        <div class="text-input-wrapper" id="textWrapper">
+            <input type="password" class="text-input" id="textInput"
+                   placeholder="Enter password" autocomplete="off"
+                   data-1p-ignore>
+        </div>
+        <button class="submit-btn" id="submitBtn" onclick="submitAlphanumeric()">Unlock</button>
+
+        <div class="error" id="error"></div>
     </div>
 
-    <div class="error-message" id="errorMessage"></div>
-
     <script>
-        const slug = window.location.pathname.split('/')[2];
+        const AUTH_TYPE = '{{AUTH_TYPE}}';
+        const SLUG = '{{SLUG}}';
+        const PIN_LENGTH = AUTH_TYPE === 'pin6' ? 6 : 4;
+
         let pin = '';
+        let isSubmitting = false;
+
         const pinDisplay = document.getElementById('pinDisplay');
-        const dots = pinDisplay.querySelectorAll('.pin-dot');
-        const errorMessage = document.getElementById('errorMessage');
-        const loading = document.getElementById('loading');
+        const keypad = document.getElementById('keypad');
+        const textWrapper = document.getElementById('textWrapper');
+        const submitBtn = document.getElementById('submitBtn');
+        const textInput = document.getElementById('textInput');
+        const errorEl = document.getElementById('error');
+        const subtitle = document.getElementById('subtitle');
 
-        function updateDisplay() {
-            dots.forEach((dot, index) => {
-                if (index < pin.length) {
-                    dot.classList.add('filled');
-                } else {
-                    dot.classList.remove('filled');
-                }
+        // Configure UI based on auth type
+        if (AUTH_TYPE === 'alphanumeric') {
+            pinDisplay.style.display = 'none';
+            keypad.style.display = 'none';
+            textWrapper.style.display = 'block';
+            submitBtn.style.display = 'block';
+            subtitle.textContent = 'Enter password';
+            textInput.focus();
+
+            textInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') submitAlphanumeric();
             });
+        } else {
+            subtitle.textContent = `Enter ${PIN_LENGTH}-digit passcode`;
+            updatePinDisplay();
         }
 
-        function showError(message) {
-            errorMessage.textContent = message;
-            errorMessage.classList.add('show');
+        function updatePinDisplay() {
+            pinDisplay.innerHTML = Array(PIN_LENGTH)
+                .fill(0)
+                .map((_, i) => `<div class="pin-dot ${i < pin.length ? 'filled' : ''}"></div>`)
+                .join('');
+        }
+
+        function showError(msg) {
+            errorEl.textContent = msg;
+            errorEl.classList.add('show');
             pinDisplay.classList.add('shake');
-            
+            textWrapper.classList.add('shake');
             setTimeout(() => {
-                errorMessage.classList.remove('show');
-            }, 3000);
-            
-            setTimeout(() => {
+                errorEl.classList.remove('show');
                 pinDisplay.classList.remove('shake');
-            }, 400);
+                textWrapper.classList.remove('shake');
+            }, 2000);
         }
 
-        async function verifyPin() {
-            loading.classList.add('show');
-            
+        async function submitPasscode(passcode) {
+            if (isSubmitting) return;
+            isSubmitting = true;
+            errorEl.innerHTML = '<span class="loading"></span>';
+            errorEl.classList.add('show');
+
             try {
-                const response = await fetch(`/campass/${slug}/api/auth`, {
+                const res = await fetch(`/campass/${SLUG}/api/auth`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ pin }),
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({pin: passcode}),
                 });
 
-                const data = await response.json();
-
-                if (response.ok && data.success) {
-                    window.location.href = `/campass/${slug}/viewer`;
+                if (res.ok) {
+                    window.location.href = `/campass/${SLUG}/viewer`;
                 } else {
-                    loading.classList.remove('show');
                     pin = '';
-                    updateDisplay();
-                    showError(data.error || 'Invalid PIN');
+                    updatePinDisplay();
+                    textInput.value = '';
+                    const data = await res.json().catch(() => ({}));
+                    showError(data.error === 'Sharing is disabled'
+                        ? 'Camera is not available right now'
+                        : 'Incorrect passcode');
                 }
-            } catch (error) {
-                loading.classList.remove('show');
-                pin = '';
-                updateDisplay();
-                showError('Connection error. Please try again.');
+            } catch {
+                showError('Connection error');
+            } finally {
+                isSubmitting = false;
             }
         }
 
-        function handleKeyPress(key) {
-            if (key === 'backspace') {
+        function submitAlphanumeric() {
+            const val = textInput.value.trim();
+            if (val) submitPasscode(val);
+        }
+
+        function handleKey(key) {
+            if (isSubmitting) return;
+            if (key === 'del') {
                 pin = pin.slice(0, -1);
-                updateDisplay();
-            } else if (pin.length < 4) {
+            } else if (pin.length < PIN_LENGTH) {
                 pin += key;
-                updateDisplay();
-                
-                if (pin.length === 4) {
-                    setTimeout(() => verifyPin(), 100);
-                }
+            }
+            updatePinDisplay();
+            if (pin.length === PIN_LENGTH) {
+                setTimeout(() => submitPasscode(pin), 200);
             }
         }
 
-        // Keypad click handlers
         document.querySelectorAll('.key').forEach(key => {
-            key.addEventListener('click', (e) => {
-                const keyValue = e.target.dataset.key;
-                if (keyValue) {
-                    handleKeyPress(keyValue);
-                }
+            key.addEventListener('click', () => {
+                const v = key.dataset.key;
+                if (v) handleKey(v);
             });
-        });
-
-        // Physical keyboard support
-        document.addEventListener('keydown', (e) => {
-            if (e.key >= '0' && e.key <= '9') {
-                handleKeyPress(e.key);
-            } else if (e.key === 'Backspace') {
-                e.preventDefault();
-                handleKeyPress('backspace');
-            }
         });
     </script>
 </body>

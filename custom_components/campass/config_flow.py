@@ -9,38 +9,45 @@ from homeassistant import config_entries
 from homeassistant.core import callback
 from homeassistant.helpers import selector
 
-from .const import DOMAIN
+from .const import DOMAIN, AUTH_TYPE_PIN4, AUTH_TYPE_PIN6, AUTH_TYPE_ALPHANUMERIC
 
 _LOGGER = logging.getLogger(__name__)
+
+AUTH_TYPES = {
+    AUTH_TYPE_PIN4: "4-digit passcode",
+    AUTH_TYPE_PIN6: "6-digit passcode",
+    AUTH_TYPE_ALPHANUMERIC: "Alphanumeric password",
+}
 
 
 def slugify(text: str) -> str:
     """Convert text to a URL-safe slug."""
-    # Convert to lowercase
     text = text.lower()
-    # Replace spaces and underscores with hyphens
     text = re.sub(r'[\s_]+', '-', text)
-    # Remove all non-alphanumeric characters except hyphens
     text = re.sub(r'[^a-z0-9\-]', '', text)
-    # Remove consecutive hyphens
     text = re.sub(r'-+', '-', text)
-    # Strip leading/trailing hyphens
     text = text.strip('-')
     return text
 
 
 def validate_slug(slug: str) -> bool:
     """Validate slug format."""
-    if not slug:
-        return False
-    if len(slug) > 32:
+    if not slug or len(slug) > 32:
         return False
     return bool(re.match(r'^[a-z0-9\-]+$', slug))
 
 
-def validate_pin(pin: str) -> bool:
-    """Validate PIN is exactly 4 digits."""
-    return bool(re.match(r'^\d{4}$', pin))
+def validate_passcode(passcode: str, auth_type: str) -> bool:
+    """Validate passcode based on auth type."""
+    if not passcode:
+        return False
+    if auth_type == AUTH_TYPE_PIN4:
+        return bool(re.match(r'^\d{4}$', passcode))
+    if auth_type == AUTH_TYPE_PIN6:
+        return bool(re.match(r'^\d{6}$', passcode))
+    if auth_type == AUTH_TYPE_ALPHANUMERIC:
+        return len(passcode) >= 4
+    return False
 
 
 class CamPassConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -53,14 +60,21 @@ class CamPassConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._data = {}
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None):
-        """Handle the initial step - name and PIN."""
+        """Handle the initial step - name, auth type, passcode."""
         errors = {}
 
         if user_input is not None:
-            # Validate PIN
-            if not validate_pin(user_input["pin"]):
-                errors["pin"] = "invalid_pin"
-            
+            auth_type = user_input["auth_type"]
+            passcode = user_input["passcode"]
+
+            if not validate_passcode(passcode, auth_type):
+                if auth_type == AUTH_TYPE_PIN4:
+                    errors["passcode"] = "invalid_pin4"
+                elif auth_type == AUTH_TYPE_PIN6:
+                    errors["passcode"] = "invalid_pin6"
+                else:
+                    errors["passcode"] = "invalid_alphanumeric"
+
             # Generate or validate slug
             if user_input.get("slug"):
                 slug = user_input["slug"]
@@ -70,19 +84,19 @@ class CamPassConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 slug = slugify(user_input["name"])
                 if not slug:
                     slug = "share"
-            
+
             # Check slug uniqueness
             if not errors:
                 for entry in self._async_current_entries():
                     if entry.data.get("slug") == slug:
                         errors["slug"] = "slug_taken"
                         break
-            
+
             if not errors:
-                # Store data and move to camera selection
                 self._data = {
                     "name": user_input["name"],
-                    "pin": user_input["pin"],
+                    "auth_type": auth_type,
+                    "passcode": passcode,
                     "slug": slug,
                 }
                 return await self.async_step_cameras()
@@ -91,7 +105,16 @@ class CamPassConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="user",
             data_schema=vol.Schema({
                 vol.Required("name"): str,
-                vol.Required("pin"): str,
+                vol.Required("auth_type", default=AUTH_TYPE_PIN4): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=[
+                            selector.SelectOptionDict(value=k, label=v)
+                            for k, v in AUTH_TYPES.items()
+                        ],
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                    )
+                ),
+                vol.Required("passcode"): str,
                 vol.Optional("slug"): str,
             }),
             errors=errors,
@@ -103,18 +126,16 @@ class CamPassConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             cameras = user_input.get("cameras", [])
-            
+
             if not cameras:
                 errors["cameras"] = "no_cameras_selected"
             else:
-                # Complete the config entry
                 self._data["cameras"] = cameras
                 return self.async_create_entry(
                     title=self._data["name"],
                     data=self._data,
                 )
 
-        # Get available camera entities
         camera_entities = [
             entity_id
             for entity_id in self.hass.states.async_entity_ids("camera")
@@ -156,49 +177,44 @@ class CamPassOptionsFlow(config_entries.OptionsFlow):
         errors = {}
 
         if user_input is not None:
-            # Validate PIN
-            if not validate_pin(user_input["pin"]):
-                errors["pin"] = "invalid_pin"
-            
-            # Validate slug
+            auth_type = user_input["auth_type"]
+            passcode = user_input["passcode"]
+
+            if not validate_passcode(passcode, auth_type):
+                if auth_type == AUTH_TYPE_PIN4:
+                    errors["passcode"] = "invalid_pin4"
+                elif auth_type == AUTH_TYPE_PIN6:
+                    errors["passcode"] = "invalid_pin6"
+                else:
+                    errors["passcode"] = "invalid_alphanumeric"
+
             slug = user_input.get("slug", self.config_entry.data.get("slug"))
             if not validate_slug(slug):
                 errors["slug"] = "invalid_slug"
-            
-            # Check slug uniqueness (excluding current entry)
+
             if not errors:
                 for entry in self.hass.config_entries.async_entries(DOMAIN):
                     if entry.entry_id != self.config_entry.entry_id:
                         if entry.data.get("slug") == slug:
                             errors["slug"] = "slug_taken"
                             break
-            
-            # Validate cameras
+
             cameras = user_input.get("cameras", [])
             if not cameras:
                 errors["cameras"] = "no_cameras_selected"
-            
+
             if not errors:
-                # Update config entry
                 self.hass.config_entries.async_update_entry(
                     self.config_entry,
                     data={
                         "name": user_input["name"],
-                        "pin": user_input["pin"],
+                        "auth_type": auth_type,
+                        "passcode": passcode,
                         "slug": slug,
                         "cameras": cameras,
                     },
                 )
                 return self.async_create_entry(title="", data={})
-
-        # Get available camera entities
-        camera_entities = [
-            entity_id
-            for entity_id in self.hass.states.async_entity_ids("camera")
-        ]
-
-        if not camera_entities:
-            return self.async_abort(reason="no_cameras")
 
         return self.async_show_form(
             step_id="init",
@@ -208,8 +224,20 @@ class CamPassOptionsFlow(config_entries.OptionsFlow):
                     default=self.config_entry.data.get("name"),
                 ): str,
                 vol.Required(
-                    "pin",
-                    default=self.config_entry.data.get("pin"),
+                    "auth_type",
+                    default=self.config_entry.data.get("auth_type", AUTH_TYPE_PIN4),
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=[
+                            selector.SelectOptionDict(value=k, label=v)
+                            for k, v in AUTH_TYPES.items()
+                        ],
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                    )
+                ),
+                vol.Required(
+                    "passcode",
+                    default=self.config_entry.data.get("passcode"),
                 ): str,
                 vol.Required(
                     "slug",

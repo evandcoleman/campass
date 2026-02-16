@@ -71,9 +71,10 @@ class CamPassPinView(HomeAssistantView):
         html_path = Path(__file__).parent / "frontend" / "pin.html"
         html = html_path.read_text()
         
-        # Inject share name
+        # Inject template variables
         html = html.replace("{{SHARE_NAME}}", entry.data["name"])
         html = html.replace("{{SLUG}}", slug)
+        html = html.replace("{{AUTH_TYPE}}", entry.data.get("auth_type", "pin4"))
         
         return web.Response(text=html, content_type="text/html")
 
@@ -128,7 +129,7 @@ class CamPassAuthView(HomeAssistantView):
         except Exception:
             return web.json_response({"error": "Invalid request"}, status=400)
 
-        if pin == entry.data["pin"]:
+        if pin == entry.data["passcode"]:
             # Create JWT token
             secret = request.app["hass"].data[DOMAIN][entry.entry_id]["jwt_secret"]
             token = create_jwt_token(slug, secret)
