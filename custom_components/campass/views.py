@@ -187,6 +187,7 @@ class CamPassAuthView(HomeAssistantView):
                 max_age=max_age,
                 httponly=True,
                 samesite="Lax",
+                secure=request.secure,
             )
             return response
 

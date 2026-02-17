@@ -6,6 +6,8 @@
 
 PIN-protected camera sharing for [Home Assistant](https://www.home-assistant.io/). Share live camera feeds with family, guests, or service providers — no HA account required.
 
+[![Add to Home Assistant](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=campass)
+
 <p align="center">
   <img src="screenshots/pin-pad.jpg" alt="CamPass PIN pad" width="300">
 </p>
