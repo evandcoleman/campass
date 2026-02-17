@@ -7,6 +7,7 @@ AUTH_TYPE_PIN6 = "pin6"
 AUTH_TYPE_ALPHANUMERIC = "alphanumeric"
 
 CONF_SESSION_DURATION = "session_duration"
+CONF_ENABLE_NOTIFICATIONS = "enable_notifications"
 
 SESSION_DURATIONS = {
     "1h": ("1 hour", 3600),

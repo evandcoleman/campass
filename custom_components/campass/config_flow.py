@@ -9,7 +9,7 @@ from homeassistant import config_entries
 from homeassistant.core import callback
 from homeassistant.helpers import selector
 
-from .const import CONF_SESSION_DURATION, DOMAIN, AUTH_TYPE_PIN4, AUTH_TYPE_PIN6, AUTH_TYPE_ALPHANUMERIC, SESSION_DURATIONS
+from .const import CONF_ENABLE_NOTIFICATIONS, CONF_SESSION_DURATION, DOMAIN, AUTH_TYPE_PIN4, AUTH_TYPE_PIN6, AUTH_TYPE_ALPHANUMERIC, SESSION_DURATIONS
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -99,6 +99,7 @@ class CamPassConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     "passcode": passcode,
                     "slug": slug,
                     CONF_SESSION_DURATION: user_input.get(CONF_SESSION_DURATION, "24h"),
+                    CONF_ENABLE_NOTIFICATIONS: user_input.get(CONF_ENABLE_NOTIFICATIONS, False),
                 }
                 return await self.async_step_cameras()
 
@@ -126,6 +127,7 @@ class CamPassConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         mode=selector.SelectSelectorMode.DROPDOWN,
                     )
                 ),
+                vol.Optional(CONF_ENABLE_NOTIFICATIONS, default=False): selector.BooleanSelector(),
             }),
             errors=errors,
         )
@@ -219,6 +221,7 @@ class CamPassOptionsFlow(config_entries.OptionsFlow):
                         "slug": slug,
                         "cameras": cameras,
                         CONF_SESSION_DURATION: user_input.get(CONF_SESSION_DURATION, "24h"),
+                        CONF_ENABLE_NOTIFICATIONS: user_input.get(CONF_ENABLE_NOTIFICATIONS, False),
                     },
                 )
                 return self.async_create_entry(title="", data={})
@@ -271,6 +274,10 @@ class CamPassOptionsFlow(config_entries.OptionsFlow):
                         mode=selector.SelectSelectorMode.DROPDOWN,
                     )
                 ),
+                vol.Optional(
+                    CONF_ENABLE_NOTIFICATIONS,
+                    default=self.config_entry.data.get(CONF_ENABLE_NOTIFICATIONS, False),
+                ): selector.BooleanSelector(),
             }),
             errors=errors,
         )

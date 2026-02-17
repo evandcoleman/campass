@@ -10,8 +10,12 @@ from homeassistant.components.camera import async_get_image
 from homeassistant.components.http import HomeAssistantView
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.event import async_track_state_change_event
+from homeassistant.util.dt import utcnow
 
-from .const import CONF_SESSION_DURATION, DOMAIN, SESSION_DURATIONS
+from .const import CONF_ENABLE_NOTIFICATIONS, CONF_SESSION_DURATION, DOMAIN, SESSION_DURATIONS
+
+MAX_FAILED_ATTEMPTS = 5
+LOCKOUT_SECONDS = 15 * 60  # 15 minutes
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -165,6 +169,24 @@ class CamPassAuthView(HomeAssistantView):
         if err:
             return err
 
+        ip = request.remote
+
+        # Ensure failed attempt tracking dict exists
+        domain_data = hass.data.setdefault(DOMAIN, {})
+        failed_attempts = domain_data.setdefault("_failed_attempts", {})
+
+        attempt_key = f"{slug}:{ip}"
+        attempt_info = failed_attempts.get(attempt_key, {"count": 0, "locked_until": None})
+
+        # Check lockout
+        if attempt_info["locked_until"] is not None:
+            if utcnow() < attempt_info["locked_until"]:
+                return web.json_response({"error": "Too many failed attempts. Try again later."}, status=429)
+            else:
+                # Lockout expired — reset
+                attempt_info = {"count": 0, "locked_until": None}
+                failed_attempts[attempt_key] = attempt_info
+
         try:
             data = await request.json()
             pin = data.get("pin", "")
@@ -173,10 +195,30 @@ class CamPassAuthView(HomeAssistantView):
 
         stored_passcode = entry.data.get("passcode", entry.data.get("pin", ""))
         if pin == stored_passcode:
+            # Reset failed attempts on success
+            failed_attempts.pop(attempt_key, None)
+
             secret = hass.data[DOMAIN][entry.entry_id]["jwt_secret"]
             duration_key = entry.data.get(CONF_SESSION_DURATION, "24h")
             _, duration_seconds = SESSION_DURATIONS.get(duration_key, ("24 hours", 86400))
             token = create_jwt_token(slug, secret, duration_seconds=duration_seconds)
+
+            # Fire auth_success event
+            hass.bus.async_fire("campass_access", {
+                "type": "auth_success",
+                "share": entry.data["name"],
+                "slug": slug,
+                "ip": ip,
+                "timestamp": utcnow().isoformat(),
+            })
+
+            # Persistent notification if enabled
+            if entry.data.get(CONF_ENABLE_NOTIFICATIONS, False):
+                hass.components.persistent_notification.async_create(
+                    f"Access granted to **{entry.data['name']}** from `{ip}`",
+                    title="CamPass Access",
+                    notification_id=f"campass_auth_{slug}_{ip}",
+                )
 
             response = web.json_response({"success": True})
             # Cookie max_age matches JWT duration, or 10 years for never-expires
@@ -190,6 +232,27 @@ class CamPassAuthView(HomeAssistantView):
                 secure=request.secure,
             )
             return response
+
+        # Failed auth — track attempts
+        attempt_info["count"] += 1
+        if attempt_info["count"] >= MAX_FAILED_ATTEMPTS:
+            attempt_info["locked_until"] = utcnow() + timedelta(seconds=LOCKOUT_SECONDS)
+            _LOGGER.warning(
+                "CamPass: IP %s locked out for %s after %d failed attempts",
+                ip, slug, attempt_info["count"],
+            )
+        failed_attempts[attempt_key] = attempt_info
+
+        # Fire auth_failure event
+        hass.bus.async_fire("campass_access", {
+            "type": "auth_failure",
+            "share": entry.data["name"],
+            "slug": slug,
+            "ip": ip,
+            "attempt": attempt_info["count"],
+            "locked": attempt_info["locked_until"] is not None,
+            "timestamp": utcnow().isoformat(),
+        })
 
         return web.json_response({"error": "Invalid PIN"}, status=401)
 
@@ -309,6 +372,16 @@ class CamPassStreamInfoView(HomeAssistantView):
 
         if camera_id not in entry.data.get("cameras", []):
             return web.json_response({"error": "Camera not allowed"}, status=403)
+
+        # Fire camera_view event
+        hass.bus.async_fire("campass_access", {
+            "type": "camera_view",
+            "share": entry.data["name"],
+            "slug": slug,
+            "camera_id": camera_id,
+            "ip": request.remote,
+            "timestamp": utcnow().isoformat(),
+        })
 
         # Try HLS via HA's stream component
         try:

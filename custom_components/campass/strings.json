@@ -9,7 +9,8 @@
                     "auth_type": "Authentication type",
                     "passcode": "Passcode",
                     "slug": "URL slug (optional, auto-generated from name)",
-                    "session_duration": "Session duration"
+                    "session_duration": "Session duration",
+                    "enable_notifications": "Enable access notifications"
                 }
             },
             "cameras": {
@@ -43,7 +44,8 @@
                     "passcode": "Passcode",
                     "slug": "URL slug",
                     "cameras": "Cameras",
-                    "session_duration": "Session duration"
+                    "session_duration": "Session duration",
+                    "enable_notifications": "Enable access notifications"
                 }
             }
         },
