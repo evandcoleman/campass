@@ -1,8 +1,12 @@
 """Logbook support for CamPass."""
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from homeassistant.components.logbook import LOGBOOK_ENTRY_MESSAGE, LOGBOOK_ENTRY_NAME
 from homeassistant.core import Event, HomeAssistant, callback
+
+from .const import DOMAIN
 
 EVENT_CAMPASS_ACCESS = "campass_access"
 
@@ -14,7 +18,10 @@ MESSAGES = {
 
 
 @callback
-def async_describe_events(hass: HomeAssistant, async_describe_event):
+def async_describe_events(
+    hass: HomeAssistant,
+    async_describe_event: Callable[[str, str, Callable[[Event], dict[str, str]]], None],
+) -> None:
     """Describe CamPass logbook events."""
 
     @callback
@@ -39,4 +46,4 @@ def async_describe_events(hass: HomeAssistant, async_describe_event):
             LOGBOOK_ENTRY_MESSAGE: message,
         }
 
-    async_describe_event(EVENT_CAMPASS_ACCESS, async_describe_campass_event)
+    async_describe_event(DOMAIN, EVENT_CAMPASS_ACCESS, async_describe_campass_event)
