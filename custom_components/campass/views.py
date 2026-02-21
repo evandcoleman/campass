@@ -14,8 +14,8 @@ from homeassistant.util.dt import utcnow
 
 from .const import CONF_ENABLE_NOTIFICATIONS, CONF_SESSION_DURATION, DOMAIN, SESSION_DURATIONS
 
-MAX_FAILED_ATTEMPTS = 5
-LOCKOUT_SECONDS = 15 * 60  # 15 minutes
+MAX_FAILED_ATTEMPTS = 10
+LOCKOUT_SECONDS = 5 * 60  # 5 minutes
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -169,7 +169,11 @@ class CamPassAuthView(HomeAssistantView):
         if err:
             return err
 
-        ip = request.remote
+        # Get real client IP (X-Forwarded-For takes precedence when behind proxy)
+        ip = request.headers.get("X-Forwarded-For", request.remote)
+        # X-Forwarded-For can be comma-separated; use the first (original client)
+        if "," in ip:
+            ip = ip.split(",")[0].strip()
 
         # Ensure failed attempt tracking dict exists
         domain_data = hass.data.setdefault(DOMAIN, {})

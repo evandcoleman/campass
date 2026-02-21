@@ -297,9 +297,13 @@
                     updatePinDisplay();
                     textInput.value = '';
                     const data = await res.json().catch(() => ({}));
-                    showError(data.error === 'Sharing is disabled'
-                        ? 'Camera is not available right now'
-                        : 'Incorrect passcode');
+                    if (res.status === 429) {
+                        showError('Too many attempts, please try again later');
+                    } else if (data.error === 'Sharing is disabled') {
+                        showError('Camera is not available right now');
+                    } else {
+                        showError('Incorrect passcode');
+                    }
                 }
             } catch {
                 showError('Connection error');
