@@ -383,7 +383,7 @@ class CamPassStreamInfoView(HomeAssistantView):
             "share": entry.data["name"],
             "slug": slug,
             "camera_id": camera_id,
-            "ip": request.remote,
+            "ip": request.headers.get("X-Forwarded-For", request.remote),
             "timestamp": utcnow().isoformat(),
         })
 
