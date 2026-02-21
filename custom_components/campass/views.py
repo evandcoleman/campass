@@ -223,10 +223,14 @@ class CamPassAuthView(HomeAssistantView):
 
             # Persistent notification if enabled
             if entry.data.get(CONF_ENABLE_NOTIFICATIONS, False):
-                hass.components.persistent_notification.async_create(
-                    f"Access granted to **{entry.data['name']}** from `{ip}`",
-                    title="CamPass Access",
-                    notification_id=f"campass_auth_{slug}_{ip}",
+                await hass.services.async_call(
+                    "persistent_notification",
+                    "create",
+                    {
+                        "message": f"Access granted to **{entry.data['name']}** from `{ip}`",
+                        "title": "CamPass Access",
+                        "notification_id": f"campass_auth_{slug}_{ip}",
+                    },
                 )
 
             response = web.json_response({"success": True})
