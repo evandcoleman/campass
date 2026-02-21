@@ -198,7 +198,12 @@ class CamPassAuthView(HomeAssistantView):
             return web.json_response({"error": "Invalid request"}, status=400)
 
         stored_passcode = entry.data.get("passcode", entry.data.get("pin", ""))
-        if pin == stored_passcode:
+        _LOGGER.debug(
+            "CamPass auth for %s: input=%r (type=%s), stored=%r (type=%s), match=%s",
+            slug, pin, type(pin).__name__, stored_passcode, type(stored_passcode).__name__,
+            pin == stored_passcode,
+        )
+        if str(pin) == str(stored_passcode):
             # Reset failed attempts on success
             failed_attempts.pop(attempt_key, None)
 
